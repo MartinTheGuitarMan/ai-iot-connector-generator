@@ -8,22 +8,22 @@ out-of-range field, this is what catches it — not eyeballing the output.
 import json
 from pathlib import Path
 
-from connectors import plc_line_telemetry, process_sensor_reading, process_sensor_reading_full
+from connectors import weather_station_modbus, weather_station_obs, weather_station_obs_full
 
 SAMPLE_DIR = Path(__file__).resolve().parent.parent / "sample_data"
 
 
-def test_sample_process_log_parses_completely():
-    lines = (SAMPLE_DIR / "process_sensor_log.txt").read_text().splitlines()
-    assert lines, "sample_data/process_sensor_log.txt is empty — run scripts/generate_sample_data.py"
+def test_sample_weather_obs_log_parses_completely():
+    lines = (SAMPLE_DIR / "weather_obs_log.txt").read_text().splitlines()
+    assert lines, "sample_data/weather_obs_log.txt is empty — run scripts/generate_sample_data.py"
 
     parsed = 0
     for line in lines:
         sentence_id = line.split(",")[0]
-        if sentence_id.endswith("PROCF"):
-            reading = process_sensor_reading_full.parse(line, device_id="site-1")
-        elif sentence_id.endswith("PROC"):
-            reading = process_sensor_reading.parse(line, device_id="site-1")
+        if sentence_id.endswith("WXOBSF"):
+            reading = weather_station_obs_full.parse(line, device_id="site-1")
+        elif sentence_id.endswith("WXOBS"):
+            reading = weather_station_obs.parse(line, device_id="site-1")
         else:
             raise AssertionError(f"unrecognized sentence in sample data: {line!r}")
         assert reading is not None, f"failed to parse: {line!r}"
@@ -33,31 +33,32 @@ def test_sample_process_log_parses_completely():
     assert parsed == len(lines)
 
 
-def test_sample_plc_telemetry_parses_completely():
-    lines = (SAMPLE_DIR / "plc_line_telemetry.jsonl").read_text().splitlines()
-    assert lines, "sample_data/plc_line_telemetry.jsonl is empty — run scripts/generate_sample_data.py"
+def test_sample_weather_station_modbus_parses_completely():
+    lines = (SAMPLE_DIR / "weather_station_modbus.jsonl").read_text().splitlines()
+    assert lines, "sample_data/weather_station_modbus.jsonl is empty — run scripts/generate_sample_data.py"
 
     for line in lines:
         rec = json.loads(line)
         registers = {int(k): v for k, v in rec["registers"].items()}
-        reading = plc_line_telemetry.parse(
+        reading = weather_station_modbus.parse(
             registers, device_id=rec["device_id"], timestamp=rec["timestamp"]
         )
         assert reading is not None, f"failed to parse: {rec!r}"
         values = {m.name: m.value for m in reading.measurements}
-        assert values["line_speed_upm"] > 0
-        assert values["uptime_hours"] > 0
+        assert values["rain_mm"] >= 0
+        assert values["battery_v"] > 0
 
 
-def test_sample_process_log_location_is_stable():
-    # This site is fixed, not a moving vehicle — every PROC fix should
+def test_sample_weather_obs_log_location_is_stable():
+    # This site is fixed, not a moving vehicle — every OBS fix should
     # report (near enough) the same coordinates. Catches a broken lat/lon
     # formatter producing wildly wrong coordinates that still happen to
     # parse, same as a moving-track plausibility check would elsewhere.
     fixes = []
-    for line in (SAMPLE_DIR / "process_sensor_log.txt").read_text().splitlines():
-        if line.split(",")[0].endswith("PROC") and not line.split(",")[0].endswith("PROCF"):
-            reading = process_sensor_reading.parse(line, device_id="site-1")
+    for line in (SAMPLE_DIR / "weather_obs_log.txt").read_text().splitlines():
+        sentence_id = line.split(",")[0]
+        if sentence_id.endswith("WXOBS") and not sentence_id.endswith("WXOBSF"):
+            reading = weather_station_obs.parse(line, device_id="site-1")
             fixes.append((reading.location.lat, reading.location.lon))
 
     assert len(fixes) >= 2

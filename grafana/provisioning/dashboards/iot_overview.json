@@ -16,70 +16,70 @@
     {
       "id": 1,
       "type": "timeseries",
-      "title": "Motor RPM",
+      "title": "Temperature (C)",
       "datasource": { "type": "influxdb", "uid": "influxdb-iot" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "celsius" }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"iot_reading\" and r._field == \"motor_rpm\")"
+          "query": "from(bucket: \"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"iot_reading\" and r._field == \"temperature_c\")"
         }
       ]
     },
     {
       "id": 2,
       "type": "timeseries",
-      "title": "Motor Temperature (C)",
+      "title": "Humidity (%)",
       "datasource": { "type": "influxdb", "uid": "influxdb-iot" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "fieldConfig": { "defaults": { "unit": "celsius" }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"iot_reading\" and r._field == \"motor_temp_c\")"
+          "query": "from(bucket: \"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"iot_reading\" and r._field == \"humidity_pct\")"
         }
       ]
     },
     {
       "id": 3,
       "type": "timeseries",
-      "title": "Line Speed (units/min)",
+      "title": "Wind Speed (km/h)",
       "datasource": { "type": "influxdb", "uid": "influxdb-iot" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"iot_reading\" and r._field == \"line_speed_upm\")"
+          "query": "from(bucket: \"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"iot_reading\" and r._field == \"wind_speed_kmh\")"
         }
       ]
     },
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Process Flow Rate (m3/h)",
+      "title": "Rainfall Accumulated (mm) — second vendor, Modbus",
       "datasource": { "type": "influxdb", "uid": "influxdb-iot" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
-      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "lengthmm" }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"iot_reading\" and r._field == \"flow_rate_m3h\")"
+          "query": "from(bucket: \"telemetry\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"iot_reading\" and r._field == \"rain_mm\")"
         }
       ]
     },
     {
       "id": 5,
       "type": "table",
-      "title": "Latest Process Sensor Status",
+      "title": "Latest Weather Observation",
       "datasource": { "type": "influxdb", "uid": "influxdb-iot" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "targets": [
         {
           "refId": "A",
-          "query": "from(bucket: \"telemetry\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"iot_reading\" and r.message_type == \"PROC\" and (r._field == \"sensor_status\" or r._field == \"temperature_c\" or r._field == \"pressure_bar\")) |> last() |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\") |> keep(columns: [\"_time\", \"device_id\", \"sensor_status\", \"temperature_c\", \"pressure_bar\"])"
+          "query": "from(bucket: \"telemetry\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"iot_reading\" and r.message_type == \"WXOBS\" and (r._field == \"temperature_c\" or r._field == \"humidity_pct\" or r._field == \"pressure_hpa\")) |> last() |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\") |> keep(columns: [\"_time\", \"device_id\", \"temperature_c\", \"humidity_pct\", \"pressure_hpa\"])"
         }
       ]
     }

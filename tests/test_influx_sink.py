@@ -18,8 +18,8 @@ def _line(reading: CanonicalReading) -> str:
 def test_tags_and_fields_are_present():
     reading = CanonicalReading(
         device_id="site-1",
-        protocol="industrial_ascii",
-        message_type="PROC",
+        protocol="wx_ascii",
+        message_type="WXOBS",
         timestamp="2026-09-21T12:35:19Z",
         measurements=[
             Measurement(name="temperature_c", value=23.5, unit="celsius"),
@@ -31,8 +31,8 @@ def test_tags_and_fields_are_present():
 
     assert line.startswith(f"{MEASUREMENT},")
     assert "device_id=site-1" in line
-    assert "protocol=industrial_ascii" in line
-    assert "message_type=PROC" in line
+    assert "protocol=wx_ascii" in line
+    assert "message_type=WXOBS" in line
     assert "temperature_c=23.5" in line
     assert "sensor_status=1i" in line  # int fields get an "i" suffix
     assert "lat=48.1173" in line
@@ -85,11 +85,11 @@ def test_none_valued_measurements_are_dropped_not_written_broken():
 
 def test_reading_without_location_has_no_lat_lon_fields():
     reading = CanonicalReading(
-        device_id="line-1",
-        protocol="modbus_plc",
-        message_type="line_telemetry",
+        device_id="station-2",
+        protocol="modbus_weather",
+        message_type="station_telemetry",
         timestamp="2026-09-21T08:00:00Z",
-        measurements=[Measurement(name="line_speed_upm", value=1200, unit="units_per_min")],
+        measurements=[Measurement(name="rain_mm", value=1.2, unit="mm")],
     )
     line = _line(reading)
     assert "lat=" not in line
@@ -99,14 +99,14 @@ def test_reading_without_location_has_no_lat_lon_fields():
 def test_different_readings_use_the_same_measurement_name():
     # message_type is a tag, not the measurement, so one query can span
     # every protocol/message type for a device.
-    proc = CanonicalReading(
-        device_id="d", protocol="industrial_ascii", message_type="PROC",
+    obs = CanonicalReading(
+        device_id="d", protocol="wx_ascii", message_type="WXOBS",
         timestamp="2026-09-21T08:00:00Z",
         measurements=[Measurement(name="temperature_c", value=1.0)],
     )
-    plc = CanonicalReading(
-        device_id="d", protocol="modbus_plc", message_type="line_telemetry",
+    modbus = CanonicalReading(
+        device_id="d", protocol="modbus_weather", message_type="station_telemetry",
         timestamp="2026-09-21T08:00:00Z",
-        measurements=[Measurement(name="line_speed_upm", value=1200)],
+        measurements=[Measurement(name="rain_mm", value=1.2)],
     )
-    assert _line(proc).split(",")[0] == _line(plc).split(",")[0] == MEASUREMENT
+    assert _line(obs).split(",")[0] == _line(modbus).split(",")[0] == MEASUREMENT

@@ -1,7 +1,15 @@
-# llm-iot-connector-generator
+# ai-iot-connector-generator
 
 Experiment: can an LLM be used to build Python connectors for IoT device
 protocols that translate into a canonical IoT structure?
+
+The example domain is multi-vendor weather station telemetry, picked
+deliberately: unlike something like Modbus-over-industrial-PLC, where the
+transport is already a mature, decades-solved problem, weather sensor
+hardware has no real standard. Every vendor's ASCII sentence dialect (or,
+for some stations, Modbus register map) differs, and unifying them into
+one schema is still mostly hand-coded, per-integration work — which is
+exactly the kind of fragmentation this generator is meant to paper over.
 
 ## Stage 1 (this commit): template-based connector generator
 
@@ -28,40 +36,41 @@ tests/                  generator, connector, pipeline, and sample-data tests
 ```
 
 Two transports are implemented. Neither is tied to any one protocol
-standard or industry — they're general field-addressing strategies that
+standard or vendor — they're general field-addressing strategies that
 cover most real device wire formats:
 
 - **delimited_text** — comma-delimited, field-index addressed (the kind
   of ASCII sentence a lot of serial sensor hardware emits).
-  - `specs/process_sensor_reading.yaml` → `connectors/process_sensor_reading.py`:
-    parses `$..PROC` sentences (checksum-verified) into site position,
-    temperature, pressure, and flow rate. Timestamp comes from an external
+  - `specs/weather_station_obs.yaml` → `connectors/weather_station_obs.py`:
+    parses `$..WXOBS` sentences (checksum-verified) into site position,
+    temperature, humidity, and pressure. Timestamp comes from an external
     `reference_date` parameter, since the sentence carries only time-of-day
     (`hms_time` field type).
-  - `specs/process_sensor_reading_full.yaml` → `connectors/process_sensor_reading_full.py`:
-    parses `$..PROCF` sentences into position, vibration, and motor RPM.
+  - `specs/weather_station_obs_full.yaml` → `connectors/weather_station_obs_full.py`:
+    parses `$..WXOBSF` sentences into position and wind speed/direction.
     Unlike the plain reading, this one carries its own `ddmmyy` date field
     (`canonical.date_field` in the spec, `ddmmyy_date` field type), so its
     timestamp is self-contained and its `parse()` takes no `reference_date`.
     A 2-digit year is inherently ambiguous across centuries — the generator
     resolves it to 2000-2099, documented (and tested) as a known limitation
     of that date encoding, not a parsing bug.
-- **register_map** — address/scale addressed (Modbus-style, common across
-  industrial controllers regardless of what they're attached to). Example:
-  `specs/plc_line_telemetry.yaml` → `connectors/plc_line_telemetry.py`,
-  which decodes signed/unsigned 16- and 32-bit holding registers (line
-  speed, motor current, motor temperature, uptime) with per-field scaling.
+- **register_map** — address/scale addressed (Modbus-style). Example:
+  `specs/weather_station_modbus.yaml` → `connectors/weather_station_modbus.py`:
+  a *different vendor's* weather station, exposed over Modbus holding
+  registers instead of ASCII sentences (rainfall, wind gust, battery
+  voltage, UV index) — the same real-world fragmentation story, a second
+  wire format for the same category of device.
 
 Every generated connector's `parse(...)` returns a `canonical.CanonicalReading`
 (device_id, protocol, message_type, ISO 8601 timestamp, location, a list of
 named/unit-tagged measurements, and the original raw field values) —
-one shape regardless of source protocol.
+one shape regardless of source protocol or vendor.
 
 Regenerate a connector after editing its spec:
 
 ```
 pip install -r requirements.txt
-python -m generator.cli generate --spec specs/process_sensor_reading.yaml --out connectors/process_sensor_reading.py
+python -m generator.cli generate --spec specs/weather_station_obs.yaml --out connectors/weather_station_obs.py
 python -m pytest -q
 ```
 
@@ -80,13 +89,13 @@ the mapping wrong" apart from "the codegen is non-deterministic/buggy."
 ## Sample data
 
 `scripts/generate_sample_data.py` generates a synthetic but plausible
-telemetry capture: one fixed production site emitting paired process
-sensor sentences and PLC register snapshots once per simulated minute.
-It's seeded (deterministic, reproducible) and writes:
+telemetry capture: one fixed weather station site emitting paired ASCII
+observation sentences, plus a second vendor's station at the same site
+reporting over Modbus. It's seeded (deterministic, reproducible) and writes:
 
 ```
-sample_data/process_sensor_log.txt    60 sentences (30 PROC + 30 PROCF)
-sample_data/plc_line_telemetry.jsonl  30 register snapshots
+sample_data/weather_obs_log.txt           60 sentences (30 WXOBS + 30 WXOBSF)
+sample_data/weather_station_modbus.jsonl  30 register snapshots
 ```
 
 This is fixture data for exercising the pipeline end-to-end — it is
@@ -104,7 +113,7 @@ pipeline/run_pipeline.py   reads sample_data/, runs it through the
 
 All readings share one InfluxDB measurement, `iot_reading`; protocol
 and message type are tags, not the measurement name, so a single query can
-span every protocol for a device.
+span every protocol/vendor for a device.
 
 ```
 # Print line-protocol output, no InfluxDB required:
@@ -127,8 +136,8 @@ docker compose up -d
   beyond your own machine).
 - **Grafana** (`localhost:3000`, anonymous viewer access enabled) —
   auto-provisioned with the InfluxDB datasource and an "IoT Telemetry
-  Overview" dashboard (motor RPM, motor temp, line speed, process flow
-  rate, latest sensor status).
+  Overview" dashboard (temperature, humidity, wind speed, rainfall from
+  the second vendor's Modbus station, latest observation).
 - **Node-RED** (`localhost:1880`) — an alternative ingest path to
   `pipeline/run_pipeline.py`: `POST /ingest/reading` with a
   `CanonicalReading.to_dict()`-shaped JSON body, and its one function node
@@ -140,7 +149,7 @@ docker compose up -d
   ```
   curl -X POST http://localhost:1880/ingest/reading \
     -H 'Content-Type: application/json' \
-    -d '{"device_id":"site-1","protocol":"industrial_ascii","message_type":"PROC",
+    -d '{"device_id":"site-1","protocol":"wx_ascii","message_type":"WXOBS",
          "timestamp":"2026-09-21T12:35:19Z",
          "measurements":[{"name":"temperature_c","value":23.5,"unit":"celsius"}],
          "location":{"lat":48.1173,"lon":11.5167}}'
@@ -188,8 +197,8 @@ Node-RED and confirm the point shows up in Grafana too.
 
 Have an LLM draft the declarative spec (or the connector directly) from raw,
 unstructured protocol documentation — a sensor's ASCII sentence table, a
-PLC's register map, a manufacturer's Modbus datasheet — instead of a human
-writing YAML by hand. This is the part that actually tests the "can an LLM
-build IoT device connectors" question; stage 1 is the harness it will be
-evaluated against (does the generated spec validate, does the generated
-connector's test output match real captured device data).
+vendor's Modbus register map datasheet — instead of a human writing YAML by
+hand. This is the part that actually tests the "can an LLM build IoT device
+connectors" question; stage 1 is the harness it will be evaluated against
+(does the generated spec validate, does the generated connector's test
+output match real captured device data).

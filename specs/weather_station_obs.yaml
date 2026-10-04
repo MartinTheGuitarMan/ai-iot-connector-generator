@@ -1,14 +1,14 @@
-protocol: industrial_ascii
+protocol: wx_ascii
 transport: delimited_text
 delimiter: ","
 
 message:
-  id: PROC
-  match_suffix: "PROC"
-  description: "Process sensor reading (time-of-day only, no date)"
+  id: WXOBS
+  match_suffix: "WXOBS"
+  description: "Weather station observation (time-of-day only, no date)"
 
 fields:
-  - name: reading_time
+  - name: obs_time
     index: 1
     type: hms_time
   - name: site_lat
@@ -23,36 +23,30 @@ fields:
   - name: site_lon_dir
     index: 5
     type: str
-  - name: sensor_status
-    index: 6
-    type: int
   - name: temperature_c
+    index: 6
+    type: float
+  - name: humidity_pct
     index: 7
     type: float
-  - name: pressure_bar
+  - name: pressure_hpa
     index: 8
-    type: float
-  - name: flow_rate_m3h
-    index: 9
     type: float
 
 canonical:
-  timestamp_field: reading_time
+  timestamp_field: obs_time
   location:
     lat_field: site_lat
     lat_dir_field: site_lat_dir
     lon_field: site_lon
     lon_dir_field: site_lon_dir
   measurements:
-    - name: sensor_status
-      field: sensor_status
-      unit: none
     - name: temperature_c
       field: temperature_c
       unit: celsius
-    - name: pressure_bar
-      field: pressure_bar
-      unit: bar
-    - name: flow_rate_m3h
-      field: flow_rate_m3h
-      unit: m3h
+    - name: humidity_pct
+      field: humidity_pct
+      unit: percent
+    - name: pressure_hpa
+      field: pressure_hpa
+      unit: hpa

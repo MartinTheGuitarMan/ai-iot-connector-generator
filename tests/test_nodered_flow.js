@@ -45,15 +45,15 @@ function check(name, fn) {
   }
 }
 
-const PROC_READING = {
+const OBS_READING = {
   device_id: "site-1",
-  protocol: "industrial_ascii",
-  message_type: "PROC",
+  protocol: "wx_ascii",
+  message_type: "WXOBS",
   timestamp: "2026-09-21T12:35:19Z",
   measurements: [
     { name: "temperature_c", value: 23.5, unit: "celsius" },
-    { name: "sensor_status", value: 1, unit: "none" },
-    { name: "pressure_bar", value: null, unit: "bar" },
+    { name: "humidity_pct", value: 60, unit: "percent" },
+    { name: "pressure_hpa", value: null, unit: "hpa" },
   ],
   location: { lat: 48.1173, lon: 11.5167 },
 };
@@ -68,16 +68,16 @@ const EMPTY_READING = {
 };
 
 check("reference implementation produces expected line protocol", () => {
-  const line = toLineProtocol(PROC_READING);
+  const line = toLineProtocol(OBS_READING);
   assert.strictEqual(
     line,
-    "iot_reading,device_id=site-1,protocol=industrial_ascii,message_type=PROC temperature_c=23.5,sensor_status=1i,lat=48.1173,lon=11.5167 1789994119"
+    "iot_reading,device_id=site-1,protocol=wx_ascii,message_type=WXOBS temperature_c=23.5,humidity_pct=60i,lat=48.1173,lon=11.5167 1789994119"
   );
 });
 
 check("reference implementation drops null-valued measurements", () => {
-  const line = toLineProtocol(PROC_READING);
-  assert(!line.includes("pressure_bar"));
+  const line = toLineProtocol(OBS_READING);
+  assert(!line.includes("pressure_hpa"));
 });
 
 check("reference implementation returns null when there are no fields", () => {
@@ -85,13 +85,13 @@ check("reference implementation returns null when there are no fields", () => {
 });
 
 check("flow's inline function produces the same line protocol payload as the reference", () => {
-  const { result } = runFlow(PROC_READING);
+  const { result } = runFlow(OBS_READING);
   assert(result, "flow function returned null/undefined for a reading with fields");
-  assert.strictEqual(result.payload, toLineProtocol(PROC_READING));
+  assert.strictEqual(result.payload, toLineProtocol(OBS_READING));
 });
 
 check("flow's inline function sets the InfluxDB write URL, method, and auth header", () => {
-  const { result } = runFlow(PROC_READING);
+  const { result } = runFlow(OBS_READING);
   assert.strictEqual(result.method, "POST");
   assert.strictEqual(
     result.url,

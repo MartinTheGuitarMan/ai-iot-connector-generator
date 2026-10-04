@@ -1,0 +1,39 @@
+protocol: modbus_weather
+transport: register_map
+
+message:
+  id: station_telemetry
+  description: "A different vendor's weather station, exposed over Modbus holding registers instead of ASCII sentences"
+
+fields:
+  - name: rain_mm
+    address: 0
+    type: uint16
+    scale: 0.1
+  - name: wind_gust_kmh
+    address: 1
+    type: uint16
+    scale: 0.1
+  - name: battery_v
+    address: 2
+    type: uint16
+    scale: 0.01
+  - name: uv_index
+    address: 3
+    type: uint16
+    scale: 0.1
+
+canonical:
+  measurements:
+    - name: rain_mm
+      field: rain_mm
+      unit: mm
+    - name: wind_gust_kmh
+      field: wind_gust_kmh
+      unit: kmh
+    - name: battery_v
+      field: battery_v
+      unit: volts
+    - name: uv_index
+      field: uv_index
+      unit: none

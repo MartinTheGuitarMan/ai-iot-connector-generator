@@ -1,14 +1,14 @@
-protocol: industrial_ascii
+protocol: wx_ascii
 transport: delimited_text
 delimiter: ","
 
 message:
-  id: PROCF
-  match_suffix: "PROCF"
-  description: "Process sensor reading with self-contained date (rotating equipment monitoring)"
+  id: WXOBSF
+  match_suffix: "WXOBSF"
+  description: "Weather station observation with self-contained date (wind)"
 
 fields:
-  - name: reading_time
+  - name: obs_time
     index: 1
     type: hms_time
   - name: status
@@ -26,28 +26,28 @@ fields:
   - name: site_lon_dir
     index: 6
     type: str
-  - name: vibration_mm_s
+  - name: wind_speed_kmh
     index: 7
     type: float
-  - name: motor_rpm
+  - name: wind_dir_deg
     index: 8
     type: int
-  - name: reading_date
+  - name: obs_date
     index: 9
     type: ddmmyy_date
 
 canonical:
-  timestamp_field: reading_time
-  date_field: reading_date
+  timestamp_field: obs_time
+  date_field: obs_date
   location:
     lat_field: site_lat
     lat_dir_field: site_lat_dir
     lon_field: site_lon
     lon_dir_field: site_lon_dir
   measurements:
-    - name: vibration_mm_s
-      field: vibration_mm_s
-      unit: mm_s
-    - name: motor_rpm
-      field: motor_rpm
-      unit: rpm
+    - name: wind_speed_kmh
+      field: wind_speed_kmh
+      unit: kmh
+    - name: wind_dir_deg
+      field: wind_dir_deg
+      unit: degrees

@@ -8,7 +8,7 @@ upstream of it changes.
 
 All readings share one measurement ("iot_reading"); message_type is a
 tag rather than the measurement name so a single query can span protocols
-(e.g. "every reading from device_id=line-1 in the last hour").
+(e.g. "every reading from device_id=site-1 in the last hour").
 """
 
 from __future__ import annotations

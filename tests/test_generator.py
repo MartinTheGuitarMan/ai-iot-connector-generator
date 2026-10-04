@@ -4,26 +4,26 @@ from generator.codegen import generate
 from generator.spec import ProtocolSpec, SpecError
 
 
-def test_load_process_sensor_spec():
-    spec = ProtocolSpec.from_yaml("specs/process_sensor_reading.yaml")
-    assert spec.protocol == "industrial_ascii"
+def test_load_weather_obs_spec():
+    spec = ProtocolSpec.from_yaml("specs/weather_station_obs.yaml")
+    assert spec.protocol == "wx_ascii"
     assert spec.transport == "delimited_text"
-    assert spec.message.match_suffix == "PROC"
+    assert spec.message.match_suffix == "WXOBS"
     assert spec.field_by_name("temperature_c").type == "float"
 
 
-def test_load_plc_spec():
-    spec = ProtocolSpec.from_yaml("specs/plc_line_telemetry.yaml")
-    assert spec.protocol == "modbus_plc"
+def test_load_weather_modbus_spec():
+    spec = ProtocolSpec.from_yaml("specs/weather_station_modbus.yaml")
+    assert spec.protocol == "modbus_weather"
     assert spec.transport == "register_map"
-    assert spec.field_by_name("line_speed_upm").address == 0
+    assert spec.field_by_name("rain_mm").address == 0
 
 
 def test_generated_source_is_valid_python():
     for path in (
-        "specs/process_sensor_reading.yaml",
-        "specs/process_sensor_reading_full.yaml",
-        "specs/plc_line_telemetry.yaml",
+        "specs/weather_station_obs.yaml",
+        "specs/weather_station_obs_full.yaml",
+        "specs/weather_station_modbus.yaml",
     ):
         spec = ProtocolSpec.from_yaml(path)
         source = generate(spec)

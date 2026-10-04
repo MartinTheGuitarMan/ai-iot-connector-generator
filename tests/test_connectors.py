@@ -1,93 +1,92 @@
 import datetime as dt
 
-from connectors import plc_line_telemetry, process_sensor_reading, process_sensor_reading_full
+from connectors import weather_station_modbus, weather_station_obs, weather_station_obs_full
 
-# Self-authored industrial ASCII telemetry sentences (checksum verified by
-# running them through the generated connector, not just computed by hand):
+# Self-authored weather station ASCII sentences (checksum verified by running
+# them through the generated connector, not just computed by hand):
 # site at 48.1173N, 11.5167E, reading at 08:15:30 UTC.
-PROC_SENTENCE = "$INPROC,081530,4807.038,N,01131.000,E,1,23.5,2.1,145.6*3D"
-PROCF_SENTENCE = "$INPROCF,081530,A,4807.038,N,01131.000,E,1.8,1780,150325*3D"
+OBS_SENTENCE = "$STWXOBS,081530,4807.038,N,01131.000,E,21.4,63.0,1013.2*7D"
+OBSF_SENTENCE = "$STWXOBSF,081530,A,4807.038,N,01131.000,E,14.5,230,150325*64"
 
 
-def test_proc_parses_position_and_timestamp():
-    reading = process_sensor_reading.parse(
-        PROC_SENTENCE, device_id="site-1", reference_date=dt.date(2026, 9, 21)
+def test_obs_parses_position_and_timestamp():
+    reading = weather_station_obs.parse(
+        OBS_SENTENCE, device_id="site-1", reference_date=dt.date(2026, 9, 21)
     )
     assert reading is not None
-    assert reading.protocol == "industrial_ascii"
-    assert reading.message_type == "PROC"
+    assert reading.protocol == "wx_ascii"
+    assert reading.message_type == "WXOBS"
     assert reading.timestamp == "2026-09-21T08:15:30Z"
     assert reading.location.lat == pytest_approx(48 + 7.038 / 60)
     assert reading.location.lon == pytest_approx(11 + 31.000 / 60)
 
 
-def test_proc_parses_measurements():
-    reading = process_sensor_reading.parse(PROC_SENTENCE, device_id="site-1")
+def test_obs_parses_measurements():
+    reading = weather_station_obs.parse(OBS_SENTENCE, device_id="site-1")
     values = {m.name: m.value for m in reading.measurements}
-    assert values["sensor_status"] == 1
-    assert values["temperature_c"] == 23.5
-    assert values["pressure_bar"] == 2.1
-    assert values["flow_rate_m3h"] == 145.6
+    assert values["temperature_c"] == 21.4
+    assert values["humidity_pct"] == 63.0
+    assert values["pressure_hpa"] == 1013.2
 
 
-def test_proc_rejects_bad_checksum():
-    corrupted = PROC_SENTENCE[:-2] + "00"
-    assert process_sensor_reading.parse(corrupted, device_id="site-1") is None
+def test_obs_rejects_bad_checksum():
+    corrupted = OBS_SENTENCE[:-2] + "00"
+    assert weather_station_obs.parse(corrupted, device_id="site-1") is None
 
 
-def test_proc_rejects_wrong_message_type():
-    # A PROCF sentence handed to the PROC-only connector must be refused,
-    # not silently misparsed against PROC's field positions. This also
-    # exercises the match-suffix fix: PROC (4 chars) and PROCF (5 chars)
+def test_obs_rejects_wrong_message_type():
+    # An OBSF sentence handed to the OBS-only connector must be refused,
+    # not silently misparsed against OBS's field positions. This also
+    # exercises the match-suffix fix: WXOBS (5 chars) and WXOBSF (6 chars)
     # must not cross-match on a naive fixed-length suffix comparison.
-    assert process_sensor_reading.parse(PROCF_SENTENCE, device_id="site-1") is None
+    assert weather_station_obs.parse(OBSF_SENTENCE, device_id="site-1") is None
 
 
-def test_procf_derives_full_timestamp_from_its_own_date_field():
-    # Unlike PROC, PROCF carries its own ddmmyy date, so it needs no
+def test_obsf_derives_full_timestamp_from_its_own_date_field():
+    # Unlike OBS, OBSF carries its own ddmmyy date, so it needs no
     # external reference_date and its parse() signature has no such param.
-    reading = process_sensor_reading_full.parse(PROCF_SENTENCE, device_id="site-1")
+    reading = weather_station_obs_full.parse(OBSF_SENTENCE, device_id="site-1")
     assert reading is not None
-    assert reading.protocol == "industrial_ascii"
-    assert reading.message_type == "PROCF"
+    assert reading.protocol == "wx_ascii"
+    assert reading.message_type == "WXOBSF"
     assert reading.timestamp == "2025-03-15T08:15:30Z"
     assert reading.location.lat == pytest_approx(48 + 7.038 / 60)
 
 
-def test_procf_parses_vibration_and_rpm():
-    reading = process_sensor_reading_full.parse(PROCF_SENTENCE, device_id="site-1")
+def test_obsf_parses_wind():
+    reading = weather_station_obs_full.parse(OBSF_SENTENCE, device_id="site-1")
     values = {m.name: m.value for m in reading.measurements}
-    assert values["vibration_mm_s"] == pytest_approx(1.8)
-    assert values["motor_rpm"] == 1780
+    assert values["wind_speed_kmh"] == pytest_approx(14.5)
+    assert values["wind_dir_deg"] == 230
 
 
-def test_procf_rejects_bad_checksum():
-    corrupted = PROCF_SENTENCE[:-2] + "00"
-    assert process_sensor_reading_full.parse(corrupted, device_id="site-1") is None
+def test_obsf_rejects_bad_checksum():
+    corrupted = OBSF_SENTENCE[:-2] + "00"
+    assert weather_station_obs_full.parse(corrupted, device_id="site-1") is None
 
 
-def test_plc_line_telemetry_scales_and_signs_values():
+def test_modbus_weather_station_scales_values():
     registers = {
-        0: 1200,  # line_speed_upm, uint16, scale 1.0
-        1: 125,  # motor_current_a raw -> 12.5A after *0.1 scale
-        2: 0xFE0C,  # motor_temp_c raw -500 -> -50.0C after *0.1 scale (two's complement)
-        3: 22069,  # uptime_hours low word
-        4: 1,  # uptime_hours high word -> (1<<16 | 22069) = 87605 -> *0.1 = 8760.5h
+        0: 125,  # rain_mm, uint16, scale 0.1 -> 12.5mm
+        1: 320,  # wind_gust_kmh, scale 0.1 -> 32.0 kmh
+        2: 370,  # battery_v, scale 0.01 -> 3.70V
+        3: 45,  # uv_index, scale 0.1 -> 4.5
     }
-    reading = plc_line_telemetry.parse(
-        registers, device_id="line-1", timestamp="2026-09-21T09:00:00Z"
+    reading = weather_station_modbus.parse(
+        registers, device_id="station-2", timestamp="2026-09-21T09:00:00Z"
     )
     assert reading is not None
     values = {m.name: m.value for m in reading.measurements}
-    assert values["line_speed_upm"] == 1200
-    assert values["motor_current_a"] == pytest_approx(12.5)
-    assert values["motor_temp_c"] == pytest_approx(-50.0)
-    assert values["uptime_hours"] == pytest_approx(8760.5)
+    assert values["rain_mm"] == pytest_approx(12.5)
+    assert values["wind_gust_kmh"] == pytest_approx(32.0)
+    assert values["battery_v"] == pytest_approx(3.70)
+    assert values["uv_index"] == pytest_approx(4.5)
 
 
-def test_plc_missing_register_returns_none():
+def test_modbus_weather_station_missing_register_returns_none():
     assert (
-        plc_line_telemetry.parse({0: 1200}, device_id="line-1", timestamp="now") is None
+        weather_station_modbus.parse({0: 125}, device_id="station-2", timestamp="now")
+        is None
     )
 
 

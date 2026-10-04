@@ -25,24 +25,24 @@ import os
 from pathlib import Path
 
 from canonical import CanonicalReading
-from connectors import plc_line_telemetry, process_sensor_reading, process_sensor_reading_full
+from connectors import weather_station_modbus, weather_station_obs, weather_station_obs_full
 from pipeline.influx_sink import to_point
 
 SAMPLE_DIR = Path(__file__).resolve().parent.parent / "sample_data"
 
 
-def read_process_sensor_readings(device_id: str = "site-1") -> list[CanonicalReading]:
+def read_weather_obs_readings(device_id: str = "site-1") -> list[CanonicalReading]:
     readings = []
-    path = SAMPLE_DIR / "process_sensor_log.txt"
+    path = SAMPLE_DIR / "weather_obs_log.txt"
     for line in path.read_text().splitlines():
         line = line.strip()
         if not line:
             continue
         sentence_id = line.split(",")[0]
-        if sentence_id.endswith("PROCF"):
-            reading = process_sensor_reading_full.parse(line, device_id=device_id)
-        elif sentence_id.endswith("PROC"):
-            reading = process_sensor_reading.parse(line, device_id=device_id)
+        if sentence_id.endswith("WXOBSF"):
+            reading = weather_station_obs_full.parse(line, device_id=device_id)
+        elif sentence_id.endswith("WXOBS"):
+            reading = weather_station_obs.parse(line, device_id=device_id)
         else:
             raise ValueError(f"unrecognized sentence in {path}: {line!r}")
         if reading is None:
@@ -51,13 +51,13 @@ def read_process_sensor_readings(device_id: str = "site-1") -> list[CanonicalRea
     return readings
 
 
-def read_plc_readings() -> list[CanonicalReading]:
+def read_weather_station_modbus_readings() -> list[CanonicalReading]:
     readings = []
-    path = SAMPLE_DIR / "plc_line_telemetry.jsonl"
+    path = SAMPLE_DIR / "weather_station_modbus.jsonl"
     for line in path.read_text().splitlines():
         rec = json.loads(line)
         registers = {int(k): v for k, v in rec["registers"].items()}
-        reading = plc_line_telemetry.parse(
+        reading = weather_station_modbus.parse(
             registers, device_id=rec["device_id"], timestamp=rec["timestamp"]
         )
         if reading is None:
@@ -67,7 +67,7 @@ def read_plc_readings() -> list[CanonicalReading]:
 
 
 def load_all_readings() -> list[CanonicalReading]:
-    return read_process_sensor_readings() + read_plc_readings()
+    return read_weather_obs_readings() + read_weather_station_modbus_readings()
 
 
 def write_to_influx(readings: list[CanonicalReading]) -> None:
