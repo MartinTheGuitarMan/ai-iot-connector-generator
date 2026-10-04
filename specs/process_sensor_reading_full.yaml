@@ -1,0 +1,53 @@
+protocol: industrial_ascii
+transport: delimited_text
+delimiter: ","
+
+message:
+  id: PROCF
+  match_suffix: "PROCF"
+  description: "Process sensor reading with self-contained date (rotating equipment monitoring)"
+
+fields:
+  - name: reading_time
+    index: 1
+    type: hms_time
+  - name: status
+    index: 2
+    type: str
+  - name: site_lat
+    index: 3
+    type: dm_lat
+  - name: site_lat_dir
+    index: 4
+    type: str
+  - name: site_lon
+    index: 5
+    type: dm_lon
+  - name: site_lon_dir
+    index: 6
+    type: str
+  - name: vibration_mm_s
+    index: 7
+    type: float
+  - name: motor_rpm
+    index: 8
+    type: int
+  - name: reading_date
+    index: 9
+    type: ddmmyy_date
+
+canonical:
+  timestamp_field: reading_time
+  date_field: reading_date
+  location:
+    lat_field: site_lat
+    lat_dir_field: site_lat_dir
+    lon_field: site_lon
+    lon_dir_field: site_lon_dir
+  measurements:
+    - name: vibration_mm_s
+      field: vibration_mm_s
+      unit: mm_s
+    - name: motor_rpm
+      field: motor_rpm
+      unit: rpm

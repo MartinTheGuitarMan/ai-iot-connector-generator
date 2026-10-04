@@ -1,0 +1,67 @@
+[
+  {
+    "id": "tab-iot",
+    "type": "tab",
+    "label": "IoT Ingest",
+    "disabled": false,
+    "info": "Receives a canonical reading as JSON (canonical.CanonicalReading.to_dict() shape) over HTTP and writes it to InfluxDB. Demonstrates the canonical schema as a reusable contract: this flow is an alternative sink to pipeline/influx_sink.py, consuming the exact same JSON shape.\n\nTry it once the stack is up:\n  curl -X POST http://localhost:1880/ingest/reading -H 'Content-Type: application/json' -d '{\"device_id\":\"site-1\",\"protocol\":\"industrial_ascii\",\"message_type\":\"PROC\",\"timestamp\":\"2026-09-21T12:35:19Z\",\"measurements\":[{\"name\":\"temperature_c\",\"value\":23.5,\"unit\":\"celsius\"}],\"location\":{\"lat\":48.1173,\"lon\":11.5167}}'"
+  },
+  {
+    "id": "http-in-reading",
+    "type": "http in",
+    "z": "tab-iot",
+    "name": "POST /ingest/reading",
+    "url": "/ingest/reading",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 170,
+    "y": 120,
+    "wires": [["fn-to-line-protocol"]]
+  },
+  {
+    "id": "fn-to-line-protocol",
+    "type": "function",
+    "z": "tab-iot",
+    "name": "canonical reading -> line protocol",
+    "func": "const reading = msg.payload;\n\nfunction escapeTagValue(value) {\n    return String(value).replace(/[ ,=]/g, \"\\\\$&\");\n}\n\nfunction formatFieldValue(value) {\n    if (typeof value === \"number\" && Number.isInteger(value)) {\n        return `${value}i`;\n    }\n    return String(value);\n}\n\nconst tags = [\n    `device_id=${escapeTagValue(reading.device_id)}`,\n    `protocol=${escapeTagValue(reading.protocol)}`,\n    `message_type=${escapeTagValue(reading.message_type)}`,\n].join(\",\");\n\nconst fields = [];\nfor (const m of reading.measurements || []) {\n    if (m.value === null || m.value === undefined) continue;\n    fields.push(`${m.name}=${formatFieldValue(m.value)}`);\n}\nif (reading.location) {\n    fields.push(`lat=${reading.location.lat}`);\n    fields.push(`lon=${reading.location.lon}`);\n}\n\nif (fields.length === 0) {\n    node.warn(`reading ${reading.device_id}/${reading.message_type} at ${reading.timestamp} has no fields, dropping`);\n    return null;\n}\n\nconst epochSeconds = Math.floor(new Date(reading.timestamp).getTime() / 1000);\nconst line = `iot_reading,${tags} ${fields.join(\",\")} ${epochSeconds}`;\n\nmsg.url = \"http://influxdb:8086/api/v2/write?org=iot&bucket=telemetry&precision=s\";\nmsg.method = \"POST\";\nmsg.headers = {\n    \"Authorization\": \"Token devtoken-not-a-secret\",\n    \"Content-Type\": \"text/plain; charset=utf-8\"\n};\nmsg.payload = line;\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 470,
+    "y": 120,
+    "wires": [["http-write-influx"]]
+  },
+  {
+    "id": "http-write-influx",
+    "type": "http request",
+    "z": "tab-iot",
+    "name": "InfluxDB write (msg.url/msg.method/msg.headers)",
+    "method": "use",
+    "ret": "txt",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "authType": "",
+    "senderr": false,
+    "x": 780,
+    "y": 120,
+    "wires": [["http-response"]]
+  },
+  {
+    "id": "http-response",
+    "type": "http response",
+    "z": "tab-iot",
+    "name": "",
+    "statusCode": "",
+    "headers": {},
+    "x": 1010,
+    "y": 120,
+    "wires": []
+  }
+]

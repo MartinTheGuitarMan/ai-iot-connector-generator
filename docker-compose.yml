@@ -1,0 +1,68 @@
+services:
+  influxdb:
+    image: influxdb:2
+    container_name: iot-influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      # Local-dev-only placeholder, not a real secret — see the admin token
+      # comment below.
+      DOCKER_INFLUXDB_INIT_PASSWORD: adminadmin
+      DOCKER_INFLUXDB_INIT_ORG: iot
+      DOCKER_INFLUXDB_INIT_BUCKET: telemetry
+      # Local-dev-only placeholder, not a real secret — matches the value
+      # baked into grafana/provisioning/datasources/influxdb.yaml and the
+      # README's example INFLUX_TOKEN. Change it if this ever runs anywhere
+      # beyond your own machine.
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: devtoken-not-a-secret
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: iot-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      # Same local-dev-only placeholder category as the InfluxDB token
+      # above — fine for a container only reachable on your own machine,
+      # change it before running this anywhere else.
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      influxdb:
+        condition: service_healthy
+
+  nodered:
+    image: nodered/node-red:3.1
+    container_name: iot-nodered
+    ports:
+      - "1880:1880"
+    environment:
+      TZ: UTC
+      FLOWS_FILE: flows.json
+    volumes:
+      # Named volume holds Node-RED's own state (installed nodes,
+      # settings.js); the flow definition itself is bind-mounted from the
+      # repo so it's version-controlled like everything else here.
+      - nodered-data:/data
+      - ./nodered/flows.json:/data/flows.json
+    depends_on:
+      influxdb:
+        condition: service_healthy
+
+volumes:
+  influxdb-data:
+  grafana-data:
+  nodered-data:

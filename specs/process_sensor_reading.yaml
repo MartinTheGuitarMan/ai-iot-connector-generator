@@ -1,0 +1,58 @@
+protocol: industrial_ascii
+transport: delimited_text
+delimiter: ","
+
+message:
+  id: PROC
+  match_suffix: "PROC"
+  description: "Process sensor reading (time-of-day only, no date)"
+
+fields:
+  - name: reading_time
+    index: 1
+    type: hms_time
+  - name: site_lat
+    index: 2
+    type: dm_lat
+  - name: site_lat_dir
+    index: 3
+    type: str
+  - name: site_lon
+    index: 4
+    type: dm_lon
+  - name: site_lon_dir
+    index: 5
+    type: str
+  - name: sensor_status
+    index: 6
+    type: int
+  - name: temperature_c
+    index: 7
+    type: float
+  - name: pressure_bar
+    index: 8
+    type: float
+  - name: flow_rate_m3h
+    index: 9
+    type: float
+
+canonical:
+  timestamp_field: reading_time
+  location:
+    lat_field: site_lat
+    lat_dir_field: site_lat_dir
+    lon_field: site_lon
+    lon_dir_field: site_lon_dir
+  measurements:
+    - name: sensor_status
+      field: sensor_status
+      unit: none
+    - name: temperature_c
+      field: temperature_c
+      unit: celsius
+    - name: pressure_bar
+      field: pressure_bar
+      unit: bar
+    - name: flow_rate_m3h
+      field: flow_rate_m3h
+      unit: m3h

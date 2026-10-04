@@ -1,0 +1,39 @@
+protocol: modbus_plc
+transport: register_map
+
+message:
+  id: line_telemetry
+  description: "Production line telemetry read from a PLC's Modbus holding registers"
+
+fields:
+  - name: line_speed_upm
+    address: 0
+    type: uint16
+    scale: 1.0
+  - name: motor_current_a
+    address: 1
+    type: uint16
+    scale: 0.1
+  - name: motor_temp_c
+    address: 2
+    type: int16
+    scale: 0.1
+  - name: uptime_hours
+    address: 3
+    type: uint32
+    scale: 0.1
+
+canonical:
+  measurements:
+    - name: line_speed_upm
+      field: line_speed_upm
+      unit: units_per_min
+    - name: motor_current_a
+      field: motor_current_a
+      unit: amps
+    - name: motor_temp_c
+      field: motor_temp_c
+      unit: celsius
+    - name: uptime_hours
+      field: uptime_hours
+      unit: hours
