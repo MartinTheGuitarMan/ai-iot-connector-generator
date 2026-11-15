@@ -283,8 +283,7 @@ What this does and doesn't show:
   anchors force `int8`, anchors spanning a low-byte rollover fix a counter's byte order.
   A field whose high byte is always zero reads equally well as `uint8` or `uint16_le`;
   the narrower one is chosen. Choose anchors that span the range.
-- Still easy mode: no encryption, no bit-packed fields, no multi-frame messages, 1-byte
-  checksums and CRC16 only (no CRC32/CRC8 yet), frames at most ~128 bytes for the no-sync
+- Still easy mode: no encryption, no bit-packed fields, no multi-frame messages, frames at most ~128 bytes for the no-sync
   case, and a type byte in a constant-size stream must switch value often (interleaved
   messages) to be told apart from a slowly drifting sensor.
 - Deterministic heuristics plus the knowledge base, no LLM. Only two frames of real
@@ -300,11 +299,18 @@ python scripts/run_corpus.py
 python -m reverse.cli identify --frames frames.txt     # one hex frame per line; ':7A8ED00B9' and '$..*hh' lines work too
 ```
 
-Currently 15 of 15 cases find the documented rule (Modbus RTU, DNP3, UBX, Tuya, Plantower, Daly, JBD, Sensirion
-SHDLC, XBee, Winsen, Cressi, Victron VE.Direct HEX, wired M-Bus). Also covered: SeaTalk 1's low-nibble length rule
+Currently 20 of 20 cases find the documented rule (Modbus RTU, DNP3, UBX, Tuya, Plantower, Daly, JBD, Sensirion
+SHDLC and I2C words, XBee, Winsen, Cressi, Victron VE.Direct HEX, wired M-Bus, 1-Wire DS18B20, WHOOP, PPP/HDLC);
+12 of them with high confidence. Checksum families: CRC-8/16/32 (poly, init, reflection, final XOR, byte order),
+Fletcher, 8/16-bit sums and negated sums, XOR. Byte-stuffed frames (HDLC/PPP 7E/7D, SLIP) are unstuffed first,
+but only when every frame starts and ends with the same flag byte (`reverse/stuffing.py`). Also covered: SeaTalk 1's low-nibble length rule
 (no checksum), NMEA 2000 fast-packet detection on a real vessel capture (`reverse/canlog.py`), a blind locator for
 known readings (`reverse/locate.py`: LE/BE/signed integers, packed BCD, float32, power-of-ten scales), and
 per-block CRCs (DNP3: a CRC after every 16 data bytes).
+
+The WHOOP case is a useful warning: the page documenting it gives CRC parameters that fail two of its own six
+packets, while the blind result (plain CRC-32 over the payload from byte 4) fits all six. Published parameters
+are not ground truth.
 
 Be careful with the numbers: one or two frames cannot separate rules that agree by chance (the output says
 `confidence: low`), a constant solved from the data (Victron's 0x55) counts as a free parameter, and the Modbus case
@@ -312,7 +318,7 @@ was filtered with the known CRC, so it shows agreement rather than blind discove
 `n2k`) are cloned by the tests that use them and skipped when absent. libmbus telegrams embedded here are
 BSD-3-Clause, Copyright (c) 2010-2012 Raditex Control AB.
 
-Not yet: code generation for text-wrapped frames, per-block CRCs and CAN; the locator finds candidates but does
+Not yet: code generation for text-wrapped frames, byte-stuffed frames, per-block CRCs and CAN; the locator finds candidates but does
 not yet choose between them from a single frame.
 
 ## Stage 2 (planned, not yet built): LLM-assisted spec/connector authoring
