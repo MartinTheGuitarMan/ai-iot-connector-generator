@@ -435,3 +435,14 @@ def test_ascii_hex_checks_and_conventions_differ():
 def test_ascii_hex_ignores_binary_and_plain_text():
     from reverse.identify import identify
     assert identify([bytes([0xAA, 1, 2, 3, 4, 5, 6, 7, 8])])["ascii_hex_checks"] == []
+
+
+def test_teltonika_padded_crc16():
+    from reverse.identify import identify
+    a = bytes.fromhex("000000000000003608010000016B40D8EA30010000000000000000000000000000000105021503010101425E0F01F10000601A014E0000000000000000010000C7CF")
+    b = bytes.fromhex("000000000000002808010000016B40D9AD80010000000000000000000000000000000103021503010101425E100000010000F22A")
+    r = identify([a, b])
+    assert r["matches"] == []                      # nothing at the plain end of the frames
+    m = r["padded_check"]["matches"][0]
+    assert (m["algo"], m["poly"], m["init"], m["reflected"], m["xorout"], m["start"], m["endian"]) == ("crc16", 0x8005, 0, True, 0, 8, "big")
+    assert identify([a])["padded_check"] is None   # one frame is not enough to claim a pad

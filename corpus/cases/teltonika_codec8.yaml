@@ -1,0 +1,17 @@
+id: teltonika_codec8
+name: Teltonika Codec 8 AVL data packets (GPS trackers, TCP)
+source: https://wiki.teltonika-gps.com/view/Codec (1st example ...C7CF and 2nd example ...F22A, hex streams as published)
+doc_rule: 'CRC-16/IBM (poly 8005, init 0, reflected) over the bytes from Codec ID to the second record count, stored in a 4-byte field as 00 00 + CRC, big-endian. Verified by computing: C7CF and F22A.'
+note: 'Two real packets. The check sits in a zero-padded 4-byte field, which no earlier pass handled (new failure class, fixed by the padded-check pass). Found at medium confidence. The data length field (offset 4, 4 bytes) is also true of every frame but length-field search does not cover 4-byte fields yet.'
+frames:
+- 00000000 00000036 08 01 0000016B40D8EA30 01 0000000000000000 0000000000000001 05 02 15 03 01 01 01 42 5E 0F 01 F1 00 00 60 1A 01 4E 00 00 00 00 00 00 00 00 01 0000 C7CF
+- 00000000 00000028 08 01 0000016B40D9AD80 01 0000000000000000 0000000000000001 03 02 15 03 01 01 01 42 5E 10 00 00 01 0000 F22A
+reference:
+  algo: crc16
+  poly: 32773
+  init: 0
+  reflected: true
+  xorout: 0
+  endian: big
+  start: 8
+  padded: true

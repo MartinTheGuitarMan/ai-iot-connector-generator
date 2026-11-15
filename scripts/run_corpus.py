@@ -43,6 +43,16 @@ def run():
                              top=(r["ascii_hex_checks"][0]["algo"], c["reference"]["start"], 0) if r["ascii_hex_checks"] else None,
                              top_validates=bool(hit), reference_found=bool(hit), partial=None))
             continue
+        if c["reference"].get("padded"):
+            # check stored zero-extended in a wider field: judged against r["padded_check"]
+            pc = r["padded_check"]
+            want = {k: v for k, v in c["reference"].items() if k in ("algo", "poly", "init", "reflected", "xorout", "start", "endian")}
+            hit = bool(pc) and any({k: m.get(k) for k in want} == want for m in pc["matches"])
+            rows.append(dict(id=c["id"], n=len(frames), conf=pc["confidence"] if pc else r["confidence"],
+                             cands=len(pc["matches"]) if pc else 0, ref_valid=True,
+                             top=(pc["matches"][0]["algo"], pc["matches"][0]["start"], 0) if pc else None,
+                             top_validates=hit, reference_found=hit, partial=None))
+            continue
         rp, rt = reference_rule(c["reference"])
         # a case may list frames the documented rule is known not to fit (tolerant cases); the rule must
         # fail on exactly those and nowhere else

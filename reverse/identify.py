@@ -168,6 +168,7 @@ def identify(frames: list[bytes], kb: KnowledgeBase | None = None, max_results: 
         "nested": nested,
         "poly_sweep": swept,
         "header_checks": header_checks,
+        "padded_check": _padded_check(frames, kb, _depth),
         "ascii_hex_checks": find_ascii_hex_checks(frames) if _depth == 0 else [],
         "seeded_crc16": seeded[:max_results],
         "seeded_confidence": (lambda b: "high" if b >= 40 else "medium" if b >= 20 else "low")(
@@ -278,6 +279,18 @@ def find_ascii_hex_checks(frames: list[bytes]) -> list[dict]:
         bits = len(frames) * 4 * h["width_chars"] - math.log2(max(tries, 2))
         h["confidence"] = "high" if bits >= 40 else "medium" if bits >= 20 else "low"
     return out
+
+
+def _padded_check(frames: list[bytes], kb, depth: int) -> dict | None:
+    """A check stored zero-extended in a wider field (Teltonika: CRC-16 in a 4-byte slot, 00 00 + CRC). When every
+    frame has 2 zero bytes just before its last 2 bytes, those pad bytes are removed and the search is run again."""
+    if depth or len(frames) < 2 or any(len(f) < 8 or f[-4:-2] != b"\x00\x00" for f in frames):
+        return None
+    stripped = [f[:-4] + f[-2:] for f in frames]
+    r = identify(stripped, kb, max_results=3, _depth=1)
+    if not r["matches"]:
+        return None
+    return {"pad_bytes": 2, "pad_at": "before last 2 bytes", "matches": r["matches"], "confidence": r["confidence"]}
 
 
 def detect_block_crc(frames: list[bytes], header_len: int, rule: dict, sizes=(8, 16, 32, 64, 128, 255)) -> int | None:
