@@ -4,6 +4,24 @@
 
 ![license](https://img.shields.io/badge/license-MIT-blue) ![python](https://img.shields.io/badge/python-3-blue) ![corpus](https://img.shields.io/badge/real%20protocols%20tested-30-brightgreen)
 
+## TL;DR
+
+**You have a device that talks, and nobody can tell you how.** No docs, no vendor, no source. iot-rosetta reads a few captured
+messages and works out how they are built: where each message starts and ends, and how the device checks that it arrived
+intact. That is the part that normally costs days of hex-staring.
+
+- **Who it is for:** anyone integrating old or obscure equipment: sensors, meters, batteries, trackers, machine controllers.
+- **What you give it:** a handful of captured messages, as hex. No documentation needed.
+- **What you get:** the message structure and checksum rule, with an honest confidence ("high", or "low, you need more samples").
+  From there it can generate a connector that turns the device's output into clean, structured data.
+- **What it does not do (yet):** tell you what a number *means*. Volts or litres is a job for the manual, an LLM and someone who
+  knows the equipment. That review step is the plan, not the product.
+- **How far along:** early. It has been tested on 30 real protocols, from building automation to GPS trackers to batteries, and
+  it gets some wrong. Those failures are listed openly.
+
+**Try it in a minute:** `python -m reverse.cli identify --frames frames.txt` (see [Quick start](#quick-start)).
+Have a device it fails on? That is the most useful thing you can send: [how to add it](#contribute-a-protocol-in-ten-minutes).
+
 [See it work](#see-it-work) · [How it works](#how-it-works) · [30 real protocols](#tested-on-30-real-protocols) · [Known failures](#known-failures-the-corpus-is-not-a-victory-lap) · [Contribute](#contribute-a-protocol-in-ten-minutes) · [Where this is going](#where-this-is-going)
 
 ## The problem
