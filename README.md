@@ -195,8 +195,10 @@ Node-RED and confirm the point shows up in Grafana too.
 
 ## Stage 2 (in progress): LLM-assisted spec/connector authoring
 
-Built so far: the inputs and the scoring harness. Not yet built: the LLM
-authoring loop itself.
+Built so far: the inputs, the scoring harness, and the authoring loop.
+The loop is tested offline with a scripted fake model; **it has not yet been
+run against a real model** (no API credentials were available when it was
+written), so there are no pass-rate results yet.
 
 - `docs/protocols/` — raw vendor-style protocol docs (prose + tables) for
   each of the three example protocols. These are what an LLM will be given.
@@ -209,6 +211,21 @@ authoring loop itself.
 ```
 python -m authoring.eval --references                 # references vs themselves
 python -m authoring.eval --protocol wxobs --spec my.yaml -v
+```
+
+- `authoring/author.py`, `authoring/prompt.py` — the loop: doc → model →
+  YAML → eval → feed errors back → retry (default 3 attempts, model
+  `claude-opus-5-5`). The prompt documents the spec schema with invented
+  example devices only, so nothing from the three evaluated protocols leaks
+  into it. Feedback modes: `errors` (default: validation errors, pass count
+  and failing case *labels*) and `diff` (also shows expected vs. actual
+  output; that is debugging against the answer key, so report it separately).
+- `authoring/run.py` — runs all protocols and writes `runs/<protocol>.yaml`
+  and `runs/report.json` (attempts, stage, passed/total, tokens).
+
+```
+export ANTHROPIC_API_KEY=...
+python -m authoring.run --protocol all --max-attempts 3 --feedback errors
 ```
 
 Limitation: the reference connectors come from the same specs and sample
