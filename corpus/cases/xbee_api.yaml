@@ -1,0 +1,10 @@
+id: xbee_api
+name: Digi XBee API frame
+source: https://www.digi.com/support/knowledge-base/calculating-the-checksum-of-an-api-packet
+doc_rule: 0xFF minus the LSB of the sum of all bytes after the 2-byte length field
+frames:
+- 7E 00 0A 01 01 50 01 00 48 65 6C 6C 6F B8
+reference:
+  algo: sum8
+  start: 3
+  xorout: 255

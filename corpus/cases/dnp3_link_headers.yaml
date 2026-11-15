@@ -1,0 +1,26 @@
+id: dnp3_link_headers
+name: DNP3 link-layer headers (10-byte header frames)
+source: https://cdn.chipkin.com/assets/uploads/imports/resources/DNP3QuickReference.pdf ; https://control.com/forums/threads/dnp-3-0-protocol.5359/
+doc_rule: CRC-16/DNP (poly 0x3D65 reflected, init 0, xorout 0xFFFF) over the 8 header bytes, stored low byte first; data blocks carry their own CRC every 16 bytes
+note: Only the 10-byte header of each frame is used; the data blocks that follow have a CRC every 16 bytes, which this tool does not model yet.
+frames:
+- 05 64 05 C0 01 00 00 04 E9 21
+- 05 64 05 00 00 04 01 00 19 A6
+- 05 64 14 F3 01 00 00 04 0A 3B
+- 05 64 05 40 00 04 01 00 A3 96
+- 05 64 05 80 01 00 00 04 53 11
+- 05 64 53 73 00 04 01 00 03 FC
+- 05 64 08 C4 01 00 00 04 A4 CF
+- 05 64 0E C4 01 00 00 04 7D A4
+- 05 64 0A 44 00 04 01 00 59 5E
+- 05 64 12 C4 01 00 00 04 0E 0B
+- 05 64 0F C4 05 00 02 00 2C 0F
+- 05 64 0A 44 02 00 05 00 DA C7
+reference:
+  algo: crc16
+  poly: 15717
+  init: 0
+  reflected: true
+  xorout: 65535
+  start: 0
+  endian: little

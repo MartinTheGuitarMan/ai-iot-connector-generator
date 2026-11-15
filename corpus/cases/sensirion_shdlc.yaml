@@ -1,0 +1,14 @@
+id: sensirion_shdlc
+name: Sensirion SHDLC (SVM40 / SFC mass-flow family)
+source: https://sensirion.com:443/media/documents/7F7FAF63/6164536A/Sensirion_Gas_Sensors_SEK-SVM40_UART_Interface_Description_D1.pdf
+doc_rule: invert the LSB of the sum of all bytes between the start and stop 0x7E
+frames:
+- 7E 00 00 01 00 FE 7E
+- 7E 00 00 00 00 FF 7E
+- 7E 02 43 04 64 A0 22 FC 94 7E
+note: the third frame is the document's checksum worked example, wrapped in 7E start/stop by me; no byte stuffing occurs in these three Frames are on the wire (7E flags, 7D escapes); the checksum sits over the unstuffed bytes, so start/trailer are counted after unstuffing.
+reference:
+  algo: sum8
+  start: 0
+  xorout: 255
+stuffing: hdlc

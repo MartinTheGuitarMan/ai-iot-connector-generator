@@ -1,0 +1,13 @@
+id: seatalk1_datagrams
+source: https://www.plaisance-pratique.com/IMG/pdf/Thomas_Knauf_SeaTalk_Technical_Reference.pdf ; https://forum.openmarine.net/showthread.php?tid=4961 ; https://www.github.com/ktuukkan/marine-api/issues/67
+note: 'SeaTalk 1 has no checksum. Frames: 6 equipment-ID datagrams from the reference table, one total-log datagram read from a real ST60+ bus, two lamp commands from a $STALK issue. Length rule only.'
+frames:
+- 01 05 00 00 00 60 01 00
+- 01 05 04 BA 20 28 01 00
+- 01 05 70 99 10 28 01 00
+- 01 05 F3 18 00 26 0F 06
+- 01 05 FA 03 00 30 07 03
+- 01 05 FF FF FF D0 00 00
+- 25 14 4C BF 00 00 00
+- 30 00 0C
+- 30 00 00

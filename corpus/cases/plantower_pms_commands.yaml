@@ -1,0 +1,14 @@
+id: plantower_pms_commands
+name: Plantower PMS5003 host commands and passive-mode reply
+source: https://avaldebe.github.io/PyPMS/sensors/Plantower ; https://robu.in/wp-content/uploads/2024/01/DataSheet-2.pdf
+doc_rule: same 16-bit sum, big-endian; commands are fixed 7 bytes, the data reply is 32
+frames:
+- 42 4D E1 00 01 01 71
+- 42 4D E1 00 00 01 70
+- 42 4D E2 00 00 01 71
+- 42 4D E4 00 00 01 73
+- 42 4D E4 00 01 01 74
+- 42 4D 00 1C 00 26 00 38 00 44 00 1C 00 2A 00 36 1E 1F 05 B2 01 3D 00 2D 00 11 00 0A 00 00 03 43
+reference:
+  algo: sum16
+  start: 0

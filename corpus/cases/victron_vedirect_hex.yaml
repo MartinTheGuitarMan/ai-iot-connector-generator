@@ -1,0 +1,14 @@
+id: victron_vedirect_hex
+name: Victron VE.Direct HEX commands (ASCII nibbles decoded to bytes by hand first)
+source: https://www.victronenergy.com/live/vedirect_protocol:faq ; https://communityarchive.victronenergy.com/questions/130098/vedirect-hex-python-tool.html
+doc_rule: stored = (0x55 - sum of the preceding bytes) mod 256
+note: Frames are ':' + hex text on the wire; here the first nibble (command) and the byte pairs are decoded before identification. The tool does not decode the ASCII-hex layer itself yet. Only 4 frames, and the constant 0x55 is solved from data, so confidence is capped at medium.
+frames:
+- 07 a8 ed 00 b9
+- 08 9d ed 00 f6 09 c4
+- 08 f0 ed 00 64 00 0c
+- 07 ff 0f 00 40
+reference:
+  algo: negsum8
+  start: 0
+  init: 85

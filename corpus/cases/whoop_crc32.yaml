@@ -1,0 +1,20 @@
+id: whoop_crc32
+name: 'WHOOP strap BLE packets: AA, length, header CRC-8, payload, CRC-32'
+source: https://www.mintlify.com/bWanShiTong/reverse-engineering-whoop-post/protocol/checksum-crc (six packet/checksum pairs)
+doc_rule: Source page documents CRC-32 poly 04C11DB7, init 0, reflected, xorout F43F44AC over all bytes. That only fits the four same-header packets; the two short ones fail it. Plain CRC-32 (zlib) over the payload starting at byte 4 fits all six.
+note: 'Page parameters were wrong, the blind result is right: a constant header absorbs into a custom xorout. Stored little-endian.'
+frames:
+- aa 10 00 57 23 6d 42 01 d0 36 65 66 00 00 00 00 f6 2d eb 81
+- aa 10 00 57 23 6e 42 01 0c 37 65 66 00 00 00 00 10 23 cc ef
+- aa 10 00 57 23 6f 42 01 20 7d 65 66 00 00 00 00 fe a1 e0 60
+- aa 10 00 57 23 70 42 01 50 11 65 66 00 00 00 00 f2 26 a8 bd
+- aa 08 00 a8 23 07 0e 00 c7 e4 0f 08
+- aa 08 00 a8 23 08 0e 01 6c 93 54 74
+reference:
+  algo: crc32
+  poly: 79764919
+  init: 4294967295
+  reflected: true
+  xorout: 4294967295
+  start: 4
+  endian: little

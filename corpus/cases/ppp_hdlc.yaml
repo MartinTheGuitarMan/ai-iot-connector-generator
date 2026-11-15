@@ -1,0 +1,17 @@
+id: ppp_hdlc
+name: 'PPP in HDLC-like framing (RFC 1662): 7E flag, 7D escape, CRC-16/X25 FCS'
+source: https://horo.ch/techno/ppp-fcs/examples_en.html (Windows RAS LCP request, rebuilt from the annotated table) ; https://gist.github.com/koi8-r/bbc1ee83d46d421061b451a12bc93398 (PPP in GRE, GRE header removed)
+doc_rule: 'FCS-16: poly 1021 reflected, init FFFF, xorout FFFF, low byte first, over address..data after unstuffing'
+note: 'Frames are given on the wire (stuffed). Two frames only, so medium confidence. The horo.ch frame was re-stuffed from the page''s table (escape set: bytes below 20, 7D, 7E).'
+stuffing: hdlc
+frames:
+- 7e ff 7d 23 c0 21 7d 21 7d 21 7d 20 7d 37 7d 22 7d 26 7d 20 7d 2a 7d 20 7d 20 7d 25 7d 26 7d 20 2a 2b 78 7d 27 7d 22 7d 28 7d 22 7d 2d 7d 23 7d 26 a5 f8 7e
+- 7e ff 7d 23 c0 21 7d 21 7d 21 7d 20 7d 39 7d 21 7d 24 7d 22 7d 20 7d 22 7d 26 ff ff ff ff 7d 23 7d 25 c2 23 7d 25 7d 25 7d 26 7d 20 7d 20 30 c8 e2 d4 7e
+reference:
+  algo: crc16
+  poly: 4129
+  init: 65535
+  reflected: true
+  xorout: 65535
+  start: 0
+  endian: little

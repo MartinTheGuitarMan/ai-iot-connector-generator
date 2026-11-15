@@ -1,0 +1,21 @@
+id: mbus_libmbus
+name: Wired M-Bus long frames (68 L L 68 C A CI ... CS 16) from libmbus test-frames
+source: https://github.com/rscada/libmbus test/test-frames/*.hex (80 real telegrams from many meter makes; 10 of the shortest embedded here)
+license: libmbus is BSD-3-Clause, Copyright (c) 2010-2012 Raditex Control AB; the telegram bytes are reproduced as test data under that licence.
+doc_rule: sum of bytes C..end of data, mod 256, one byte, followed by 0x16; length byte repeated at offsets 1 and 2; frame = length + 6
+note: 'Found blind from all 80 telegrams: length rule offset 1 (and 2), +6; sum8 from byte 4, trailer 0x16. Only the 10 shortest are stored.'
+frames:
+- 68 13 13 68 08 05 73 78 56 34 12 0a 00 e9 7e 01 00 00 00 35 01 00 00 3c 16
+- 68 13 13 68 08 01 73 93 92 91 90 10 00 05 69 31 65 00 00 69 00 00 00 3f 16
+- 68 15 15 68 08 02 72 78 56 34 12 24 40 01 07 13 00 00 00 0c 78 04 03 02 01 9d 16
+- 68 19 19 68 08 02 72 78 56 34 12 24 40 01 07 55 00 00 00 03 fc 20 03 43 42 41 15 31 00 7f 16
+- 68 1b 1b 68 08 01 72 07 20 18 00 e6 1e 35 07 4c 00 00 00 0c 78 07 20 18 00 0c 16 69 02 00 00 96 16
+- 68 1b 1b 68 08 00 72 12 34 56 78 a3 50 10 01 01 00 00 00 01 67 09 0a 14 60 45 92 10 14 88 13 18 16
+- 68 1f 1f 68 08 00 72 31 77 67 17 2d 2c 01 02 00 00 00 00 2f 2f 04 83 3b 88 13 00 00 2f 2f 2f 2f 2f 2f 2f 00 16
+- 68 1f 1f 68 08 02 72 78 56 34 12 24 40 01 07 55 00 00 00 03 13 15 31 00 da 02 3b 13 01 8b 60 04 37 18 02 18 16
+- 68 1f 1f 68 08 02 72 78 56 34 12 24 40 01 07 55 00 00 00 03 13 15 31 00 da 02 3b 13 01 8b 60 04 37 18 02 18 16
+- 68 1f 1f 68 08 00 72 31 77 67 17 2d 2c 01 02 00 00 00 00 2f 2f 04 83 3b 88 13 00 00 2f 2f 2f 2f 2f 2f 2f 00 16
+reference:
+  algo: sum8
+  start: 4
+  trailer: 1

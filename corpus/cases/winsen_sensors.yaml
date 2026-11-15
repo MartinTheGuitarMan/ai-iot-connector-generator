@@ -1,0 +1,11 @@
+id: winsen_sensors
+name: Winsen ZH06 / MH-Z19-style gas & dust sensors
+source: https://www.winsen-sensor.com/d/files/ZH06.pdf
+doc_rule: two's complement of the sum of bytes 1..7 (start byte FF excluded)
+frames:
+- FF 01 78 40 00 00 00 00 47
+- FF A7 01 00 00 00 00 00 58
+- FF A7 00 00 00 00 00 00 59
+reference:
+  algo: negsum8
+  start: 1

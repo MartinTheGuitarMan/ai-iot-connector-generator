@@ -1,0 +1,18 @@
+id: tuya_mcu
+name: Tuya Wi-Fi module <-> MCU serial protocol
+source: https://www.elektroda.com/rtvforum/topic4083786.html ; https://tasmota.github.io/docs/TuyaMCU ; https://support.tuya.com/en/help/_detail/K9hrvpvxmxhek
+doc_rule: sum of all bytes from the header, mod 256
+frames:
+- 55 aa 00 00 00 00 ff
+- 55 aa 00 01 00 00 00
+- 55 aa 00 02 00 00 01
+- 55 aa 00 03 00 01 01 04
+- 55 aa 03 00 00 01 00 03
+- 55 aa 00 00 00 01 01 01
+- 55 aa 00 06 00 05 01 01 00 01 01 0e
+- 55 aa 03 02 00 00 04
+- 55 aa 00 e0 00 01 00 e0
+- 55 aa 00 02 00 01 04 06
+reference:
+  algo: sum8
+  start: 0

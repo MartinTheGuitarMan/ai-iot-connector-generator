@@ -290,6 +290,31 @@ What this does and doesn't show:
 - Deterministic heuristics plus the knowledge base, no LLM. Only two frames of real
   hardware (the Cressi write-up) have been run through this; real captures are the actual test.
 
+## Tested against real published frames (corpus)
+
+`corpus/cases/*.yaml` holds real frames transcribed from datasheets, forum threads and public repos, each with its
+source and the rule the vendor documents. `scripts/run_corpus.py` identifies the rule blind and scores it:
+
+```
+python scripts/run_corpus.py
+python -m reverse.cli identify --frames frames.txt     # one hex frame per line; ':7A8ED00B9' and '$..*hh' lines work too
+```
+
+Currently 15 of 15 cases find the documented rule (Modbus RTU, DNP3, UBX, Tuya, Plantower, Daly, JBD, Sensirion
+SHDLC, XBee, Winsen, Cressi, Victron VE.Direct HEX, wired M-Bus). Also covered: SeaTalk 1's low-nibble length rule
+(no checksum), NMEA 2000 fast-packet detection on a real vessel capture (`reverse/canlog.py`), a blind locator for
+known readings (`reverse/locate.py`: LE/BE/signed integers, packed BCD, float32, power-of-ten scales), and
+per-block CRCs (DNP3: a CRC after every 16 data bytes).
+
+Be careful with the numbers: one or two frames cannot separate rules that agree by chance (the output says
+`confidence: low`), a constant solved from the data (Victron's 0x55) counts as a free parameter, and the Modbus case
+was filtered with the known CRC, so it shows agreement rather than blind discovery. Real captures (`libmbus`,
+`n2k`) are cloned by the tests that use them and skipped when absent. libmbus telegrams embedded here are
+BSD-3-Clause, Copyright (c) 2010-2012 Raditex Control AB.
+
+Not yet: code generation for text-wrapped frames, per-block CRCs and CAN; the locator finds candidates but does
+not yet choose between them from a single frame.
+
 ## Stage 2 (planned, not yet built): LLM-assisted spec/connector authoring
 
 Have an LLM draft the declarative spec (or the connector directly) from raw,

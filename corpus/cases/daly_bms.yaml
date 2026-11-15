@@ -1,0 +1,22 @@
+id: daly_bms
+name: Daly smart BMS (A5 series), UART
+source: https://juju.nz/michaelh/post/2021/heyo/ ; https://forum.arduino.cc/t/rs485-polling-returns-erroneous-data/1297357
+doc_rule: 8-bit sum of the first 12 bytes (fixed 13-byte frames)
+frames:
+- A5 40 90 08 00 00 00 00 00 00 00 00 7D
+- A5 01 90 08 01 06 01 06 75 3A 00 5A 55
+- A5 40 91 08 00 00 00 00 00 00 00 00 7E
+- A5 01 91 08 0C F9 02 0C AD 07 00 00 06
+- A5 40 92 08 00 00 00 00 00 00 00 00 7F
+- A5 01 92 08 3D 01 3D 01 00 00 00 00 BC
+- A5 40 93 08 00 00 00 00 00 00 00 00 80
+- A5 01 93 08 01 01 01 7E 00 00 09 4E 19
+- A5 40 94 08 00 00 00 00 00 00 00 00 81
+- A5 01 94 08 08 01 01 00 00 00 00 00 4C
+- A5 40 95 08 00 00 00 00 00 00 00 00 82
+- A5 01 95 08 01 0C F7 0C FA 0C F7 00 50
+- A5 01 95 08 02 0C F8 0C AF 0C AF 00 BF
+- A5 01 95 08 03 0C AD 0C AD 0C AF 00 73
+reference:
+  algo: sum8
+  start: 0

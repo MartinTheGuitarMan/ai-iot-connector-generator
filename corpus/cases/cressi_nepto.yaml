@@ -1,0 +1,16 @@
+id: cressi_nepto
+name: Cressi Nepto dive computer
+source: https://sjaeckel.github.io/2024/04/23/Cressi-Nepto-for-Subsurface.html
+doc_rule: CRC16-CCITT over LEN, CMD and payload; frame = AA AA AA .. CRC 55
+frames:
+- aaaaaa0b21b21100000acc00010004004a7855
+- aaaaaa02212000785a55
+reference:
+  algo: crc16
+  poly: 4129
+  init: 0
+  reflected: false
+  xorout: 0
+  start: 3
+  endian: little
+  trailer: 1

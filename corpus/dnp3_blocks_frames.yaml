@@ -1,0 +1,10 @@
+id: dnp3_blocks
+source: https://cdn.chipkin.com/assets/uploads/imports/resources/DNP3QuickReference.pdf ; https://control.com/forums/threads/dnp-3-0-protocol.5359/
+note: frame 2 is truncated in the source after three full data blocks, so it is cut there; the per-block CRCs are real
+frames:
+- 05 64 14 F3 01 00 00 04 0A 3B C0 C3 01 3C 02 06 3C 03 06 3C 04 06 3C 01 06 9A 12
+- 05 64 53 73 00 04 01 00 03 FC C1 E3 81 96 00 02 01 28 01 00 00 00 01 02 01 28 05 24 01 00 01 00 01 02 01 28 01 00 02 00 01 02 01 28 B4 77 01 00 03 00 01 20 02 28 01 00 00 00 01 00 00 20 A5 25
+- 05 64 08 C4 01 00 00 04 A4 CF C1 C3 00 20 3F
+- 05 64 0E C4 01 00 00 04 7D A4 C0 C4 02 50 01 00 07 07 00 64 11
+- 05 64 0A 44 00 04 01 00 59 5E C2 C4 81 10 00 93 AD
+- 05 64 0A 44 02 00 05 00 DA C7 C0 C1 81 90 02 CF 82

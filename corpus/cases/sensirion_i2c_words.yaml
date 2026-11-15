@@ -1,0 +1,23 @@
+id: sensirion_i2c_words
+name: 'Sensirion I2C data words: two data bytes then CRC-8 (SCD30, SHT3x)'
+source: https://manualmachine.com/seeed/grvsensscd30/24838649-instructions ; https://docs.buspirate.com/docs/devices/sht30-sht31-sht35/
+doc_rule: CRC-8, poly 0x31, init 0xFF, no reflection, no final XOR; CRC(0xBEEF)=0x92
+note: Words split out of the published read-measurement responses; each is a 3-byte frame.
+frames:
+- be ef 92
+- 43 db cb
+- 8c 2e 8f
+- 41 d9 70
+- e7 ff f5
+- 42 43 bf
+- 3a 1b 74
+- 65 4f b0
+- bc 7e 43
+reference:
+  algo: crc8
+  poly: 49
+  init: 255
+  reflected: false
+  xorout: 0
+  start: 0
+  endian: little

@@ -1,0 +1,29 @@
+id: modbus_rtu_pymodbus
+name: Modbus RTU frames mined from pymodbus's own test suite
+source: https://github.com/pymodbus-dev/pymodbus (test/ and examples/, shallow clone 2026-11-15)
+doc_rule: CRC16 poly 0x8005 reflected, init 0xFFFF, stored low byte first
+note: Frames are the byte literals in the repo whose trailing CRC matched the reference Modbus CRC (14 of 152 literals). That selection used the known answer, so this shows the tool agrees on real frames;
+  it is not a blind discovery of which strings are frames.
+frames:
+- 02 01 01 00 51 cc
+- 00 2b 0e 02 00 4d 47
+- 00 01 00 00 00 01 fc 1b
+- 00 03 00 7c 00 02 04 02
+- 01 01 03 01 00 0a ed 89
+- 11 03 00 7c 00 02 07 43
+- ff 03 00 7c 00 02 10 0d
+- 00 03 04 00 8d 00 8e fa bc
+- 11 03 04 00 8d 00 8e fb bd
+- fe 04 00 03 00 01 d5 c5 00
+- ff 03 04 00 8d 00 8e f5 b3
+- 11 03 06 ae 41 56 52 43 40 49 ad
+- 01 03 08 00 05 00 05 00 00 00 00 0c d7
+- 04 2b 0e 01 81 00 01 01 00 06 66 6f 6f 62 61 72 d7 3b
+reference:
+  algo: crc16
+  poly: 32773
+  init: 65535
+  reflected: true
+  xorout: 0
+  start: 0
+  endian: little

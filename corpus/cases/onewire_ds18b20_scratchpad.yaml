@@ -1,0 +1,18 @@
+id: onewire_ds18b20_scratchpad
+name: 1-Wire DS18B20 scratchpad reads (9 bytes, CRC over the first 8)
+source: https://docs.buspirate.com/docs/devices/ds18b20/ ; https://firmware.buspirate.com/devices/ds18b20 ; https://web.eece.maine.edu/~vweaver/classes/ece471/ece471_lec23.pdf ; https://wokwi.com/projects/420592802961671169
+doc_rule: 'Dallas/Maxim CRC-8: x^8+x^5+x^4+1, reflected, init 0'
+frames:
+- 7b 01 00 00 7f ff 05 10 e5
+- 1d 01 00 00 7f ff 03 10 3d
+- 82 01 4b 46 7f ff 0e 10 70
+- 50 05 4b 46 7f ff 01 10 95
+- 90 fc 4b 46 7f ff 01 10 c6
+reference:
+  algo: crc8
+  poly: 49
+  init: 0
+  reflected: true
+  xorout: 0
+  start: 0
+  endian: little

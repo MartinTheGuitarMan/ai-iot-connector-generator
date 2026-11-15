@@ -1,0 +1,27 @@
+id: jbd_bms
+name: JBD / Xiaoxiang smart BMS (UART/RS485)
+source: https://www.endless-sphere.com/sphere/threads/generic-chinese-bluetooth-bms-communication-protocol.91672/ ; https://www.github.com/syssi/esphome-jbd-bms ; https://git.mannheim.ccc.de/C3MA/berger-ble-commands/src/branch/main/docs/command-catalog.md
+doc_rule: 16-bit two's complement of the sum of command/status, length and data, big-endian; frame ends 77
+frames:
+- DD A5 03 00 FF FD 77
+- DD A5 04 00 FF FC 77
+- DD A5 05 00 FF FB 77
+- DD A5 10 00 FF F0 77
+- DD A5 A2 00 FF 5E 77
+- DD A5 A0 00 FF 60 77
+- DD 5A E1 02 00 02 FF 1B 77
+- DD 5A E1 02 00 03 FF 1A 77
+- DD 5A E1 02 00 01 FF 1C 77
+- DD 5A E1 02 00 00 FF 1D 77
+- DD 5A 00 02 56 78 FF 30 77
+- DD 5A 01 02 00 00 FF FD 77
+- DD 5A 10 02 4E 20 FF 80 77
+- DD 03 00 1B 17 00 00 00 02 D0 03 E8 00 00 20 78 00 00 00 00 00 00 10 48 03 0F 02 0B 76 0B 82 FB FF 77
+- DD 03 00 1D 06 0B 00 00 01 ED 01 F4 00 00 2C 7C 00 00 00 00 10 00 80 63 02 04 03 0B A0 0B 9D 0B 98 FA 55 77
+- DD 04 00 08 0F 23 0F 1C 0F 12 0F 1D FF 4E 77
+- DD 05 00 0A 30 31 32 33 34 35 36 37 38 39 FD E9 77
+- DD 10 00 02 07 D0 FF 27 77
+reference:
+  algo: negsum16
+  start: 2
+  trailer: 1

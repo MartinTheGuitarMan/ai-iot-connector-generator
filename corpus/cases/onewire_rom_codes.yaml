@@ -1,0 +1,16 @@
+id: onewire_rom_codes
+name: 1-Wire 64-bit ROM codes (family code, 6-byte serial, CRC over the first 7)
+source: 'https://docs.buspirate.com/docs/devices/ds18b20/ ; https://www.analog.com (APP note: serial 04 16 74 8A 15 FF, ROM 72 04 16 74 8A 15 FF 28, written in wire order here)'
+doc_rule: Dallas/Maxim CRC-8, same as the scratchpad
+note: Two frames only, so confidence is low; the rule is the same one the scratchpad case finds with high confidence.
+frames:
+- 28 5c aa 13 0a 00 00 19
+- 28 ff 15 8a 74 16 04 72
+reference:
+  algo: crc8
+  poly: 49
+  init: 0
+  reflected: true
+  xorout: 0
+  start: 0
+  endian: little

@@ -1,0 +1,11 @@
+id: ubx_cfg_msg
+name: 'u-blox UBX (GNSS receivers): CFG-MSG enabling GGA'
+source: https://embedwise.pages.dev/calculators/ubx-checksum
+doc_rule: 8-bit Fletcher (mod 256, NOT 255) over class..payload, CK_A then CK_B; sync B5 62 excluded
+frames:
+- B5 62 06 01 08 00 F0 00 00 00 00 00 00 01 00 24
+reference:
+  algo: fletcher8
+  mod: 256
+  start: 2
+note: Source page prints FB 49, which does not satisfy its own stated algorithm; correct Fletcher-8 is 00 24. Frame corrected by computation, so this is a derived case, not a verbatim one.
