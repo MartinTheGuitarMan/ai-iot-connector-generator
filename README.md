@@ -148,7 +148,7 @@ Step 3 is the point, not a formality: the tool is routinely right about a number
 litres. An open, growing collection of verified cases is the part that can be shared today, and it is the
 [corpus](corpus/cases).
 
-## How it works, in detail: capture → spec
+## Under the hood: capture → spec
 
 Stage 2 below starts from *documentation*. This is the other starting point: no
 documentation at all, just a captured byte stream and a few readings a human noted
