@@ -1,0 +1,21 @@
+protocol: mbus_inferred
+transport: framed_binary
+framing:
+  sync: '68'
+  length_offset: 1
+  length_overhead: 6
+  payload_offset: 4
+  trailer: '16'
+  crc:
+    algo: sum8
+    start: 4
+    init: 0
+    xorout: 0
+message:
+  id: long_frame
+  description: Wired M-Bus long frame. Framing rule inferred blind from 80 real telegrams (libmbus test-frames); only the C field is decoded here - the variable data blocks are not modelled.
+fields:
+- name: c_field
+  offset: 0
+  type: uint8
+  unit: none

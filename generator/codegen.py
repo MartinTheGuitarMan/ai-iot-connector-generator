@@ -352,6 +352,42 @@ _STRUCT_FORMATS = {
 }
 
 _CHECKSUM_FUNCS = {
+    ("crc8", True): """\
+def _checksum(data: bytes) -> int:
+    crc = CHK_INIT
+    for b in data:
+        crc ^= b
+        for _ in range(8):
+            crc = (crc >> 1) ^ CHK_POLY if crc & 1 else crc >> 1
+    return crc ^ CHK_XOROUT
+""",
+    ("crc8", False): """\
+def _checksum(data: bytes) -> int:
+    crc = CHK_INIT
+    for b in data:
+        crc ^= b
+        for _ in range(8):
+            crc = ((crc << 1) ^ CHK_POLY) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
+    return crc ^ CHK_XOROUT
+""",
+    ("crc32", True): """\
+def _checksum(data: bytes) -> int:
+    crc = CHK_INIT
+    for b in data:
+        crc ^= b
+        for _ in range(8):
+            crc = (crc >> 1) ^ CHK_POLY if crc & 1 else crc >> 1
+    return (crc ^ CHK_XOROUT) & 0xFFFFFFFF
+""",
+    ("crc32", False): """\
+def _checksum(data: bytes) -> int:
+    crc = CHK_INIT
+    for b in data:
+        crc ^= b << 24
+        for _ in range(8):
+            crc = ((crc << 1) ^ CHK_POLY) & 0xFFFFFFFF if crc & 0x80000000 else (crc << 1) & 0xFFFFFFFF
+    return (crc ^ CHK_XOROUT) & 0xFFFFFFFF
+""",
     ("crc16", True): """\
 def _checksum(data: bytes) -> int:
     crc = CHK_INIT
@@ -378,6 +414,26 @@ def _checksum(data: bytes) -> int:
         s2 = (s2 + s1) % 255
     return (s2 << 8) | s1
 """,
+    ("fletcher8_256", False): """\
+def _checksum(data: bytes) -> int:
+    s1 = s2 = 0
+    for b in data:
+        s1 = (s1 + b) & 0xFF
+        s2 = (s2 + s1) & 0xFF
+    return (s2 << 8) | s1
+""",
+    ("sum16", False): """\
+def _checksum(data: bytes) -> int:
+    return ((CHK_INIT + sum(data)) & 0xFFFF) ^ CHK_XOROUT
+""",
+    ("negsum8", False): """\
+def _checksum(data: bytes) -> int:
+    return (CHK_INIT - sum(data)) & 0xFF
+""",
+    ("negsum16", False): """\
+def _checksum(data: bytes) -> int:
+    return (CHK_INIT - sum(data)) & 0xFFFF
+""",
     ("sum8", False): """\
 def _checksum(data: bytes) -> int:
     return ((CHK_INIT + sum(data)) & 0xFF) ^ CHK_XOROUT
@@ -394,6 +450,10 @@ def _checksum(data: bytes) -> int:
 
 def _reflect16(value: int) -> int:
     return int(f"{value & 0xFFFF:016b}"[::-1], 2)
+
+
+def _reflect(value: int, width: int) -> int:
+    return int(f"{value & ((1 << width) - 1):0{width}b}"[::-1], 2)
 
 
 def _generate_framed_binary(spec: ProtocolSpec) -> str:
@@ -430,19 +490,20 @@ def _generate_framed_binary(spec: ProtocolSpec) -> str:
     L.append(f"CHK_SIZE = {chk_size}")
     if crc:
         L.append(f"CHK_START = {crc.start}")
-        if crc.algo == "crc16":
-            poly = _reflect16(crc.poly) if crc.reflected else crc.poly
-            L.append(f"CHK_POLY = {poly:#06x}")
-        if crc.algo != "fletcher8":
+        if crc.algo in ("crc8", "crc16", "crc32"):
+            width = {"crc8": 8, "crc16": 16, "crc32": 32}[crc.algo]
+            poly = _reflect(crc.poly, width) if crc.reflected else crc.poly
+            L.append(f"CHK_POLY = {poly:#0{2 + width // 4}x}")
+        if crc.algo in ("crc8", "crc16", "crc32", "sum8", "sum16", "negsum8", "negsum16", "xor8"):
             L.append(f"CHK_INIT = {crc.init:#06x}")
             L.append(f"CHK_XOROUT = {crc.xorout:#06x}")
-        if chk_size == 2:
+        if chk_size > 1:
             L.append(f'CHK_BYTEORDER = "{crc.endian}"')
     L.append("")
     L.append("")
 
     if crc:
-        L.append(_CHECKSUM_FUNCS[(crc.algo, crc.reflected if crc.algo == "crc16" else False)].rstrip("\n"))
+        L.append(_CHECKSUM_FUNCS[(crc.algo, crc.reflected if crc.algo in ("crc8", "crc16", "crc32") else False)].rstrip("\n"))
         L.append("")
         L.append("")
     L.append("def _frame_ok(frame: bytes) -> bool:")
@@ -453,7 +514,7 @@ def _generate_framed_binary(spec: ProtocolSpec) -> str:
         L.append("        return False")
     if crc:
         L.append("    end = len(frame) - len(TRAILER) - CHK_SIZE")
-        byteorder = "CHK_BYTEORDER" if chk_size == 2 else '"big"'
+        byteorder = "CHK_BYTEORDER" if chk_size > 1 else '"big"'
         L.append(f"    stored = int.from_bytes(frame[end:end + CHK_SIZE], {byteorder})")
         L.append("    return _checksum(frame[CHK_START:end]) == stored")
     else:

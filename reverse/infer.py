@@ -45,6 +45,8 @@ _STRUCT = {
 _TYPE_PREFERENCE = list(_STRUCT)
 
 _BUILTIN_POLYS = [0x1021, 0x8005, 0x3D65, 0x0589]
+_CRC8_POLYS = [0x07, 0x31, 0x1D, 0x9B, 0xD5, 0x39, 0x2F, 0xA7, 0x49]
+_CRC32_POLYS = [0x04C11DB7, 0x1EDC6F41, 0xA833982B]
 
 
 class InferenceError(RuntimeError):
@@ -53,8 +55,29 @@ class InferenceError(RuntimeError):
 
 # --------------------------------------------------------------------------- checksums
 
+def _crc_generic(buf: bytes, width: int, poly: int, init: int, reflected: bool, xorout: int) -> int:
+    """Rocksoft-model CRC for any width (8/16/32); `poly` is given in the normal (non-reflected) form."""
+    mask = (1 << width) - 1
+    top = 1 << (width - 1)
+    crc = init
+    if reflected:
+        rpoly = int(f"{poly:0{width}b}"[::-1], 2)
+        for b in buf:
+            crc ^= b
+            for _ in range(8):
+                crc = (crc >> 1) ^ rpoly if crc & 1 else crc >> 1
+    else:
+        for b in buf:
+            crc ^= b << (width - 8)
+            for _ in range(8):
+                crc = ((crc << 1) ^ poly) & mask if crc & top else (crc << 1) & mask
+    return (crc ^ xorout) & mask
+
+
 def checksum(buf: bytes, algo: str, poly: int = 0, init: int = 0, reflected: bool = False,
              xorout: int = 0) -> int:
+    if algo in ("crc8", "crc32"):
+        return _crc_generic(buf, 8 if algo == "crc8" else 32, poly, init, reflected, xorout)
     if algo == "crc16":
         crc = init
         if reflected:
@@ -75,6 +98,18 @@ def checksum(buf: bytes, algo: str, poly: int = 0, init: int = 0, reflected: boo
             s1 = (s1 + b) % 255
             s2 = (s2 + s1) % 255
         return (s2 << 8) | s1
+    if algo == "fletcher8_256":
+        s1 = s2 = 0
+        for b in buf:
+            s1 = (s1 + b) & 0xFF
+            s2 = (s2 + s1) & 0xFF
+        return (s2 << 8) | s1
+    if algo == "sum16":
+        return ((init + sum(buf)) & 0xFFFF) ^ xorout
+    if algo == "negsum8":
+        return (init - sum(buf)) & 0xFF
+    if algo == "negsum16":
+        return (init - sum(buf)) & 0xFFFF
     if algo == "sum8":
         return ((init + sum(buf)) & 0xFF) ^ xorout
     if algo == "xor8":
@@ -90,7 +125,7 @@ def _check_ok(frame: bytes, p: dict, trailer_len: int) -> bool:
     end = len(frame) - trailer_len - size
     if end < p["start"]:
         return False
-    stored = int.from_bytes(frame[end:end + size], p.get("endian", "little") if size == 2 else "big")
+    stored = int.from_bytes(frame[end:end + size], p.get("endian", "little") if size > 1 else "big")
     return checksum(frame[p["start"]:end], p["algo"], p.get("poly", 0), p.get("init", 0),
                     p.get("reflected", False), p.get("xorout", 0)) == stored
 
@@ -99,13 +134,23 @@ def _checksum_candidates(sync_len: int, max_start: int, kb: KnowledgeBase):
     for p in kb.learned_checksums():  # what earlier validated runs established
         yield dict(p)
     polys = list(dict.fromkeys(_BUILTIN_POLYS + kb.learned_polys()))
-    starts = sorted({s for s in {0, sync_len, *range(sync_len, sync_len + 8)} if s <= max_start})
+    starts = sorted({s for s in range(0, sync_len + 8) if s <= max_start})  # every offset up to just past the sync
     for start in starts:
         for poly, init, refl, xo, endian in itertools.product(
                 polys, [0, 0xFFFF], [True, False], [0, 0xFFFF], ["little", "big"]):
             yield dict(algo="crc16", poly=poly, init=init, reflected=refl, xorout=xo, start=start, endian=endian)
-        for endian in ("little", "big"):
-            yield dict(algo="fletcher8", start=start, endian=endian)
+        for poly, init, refl, xo in itertools.product(_CRC8_POLYS, [0, 0xFF], [True, False], [0, 0xFF]):
+            yield dict(algo="crc8", poly=poly, init=init, reflected=refl, xorout=xo, start=start)
+        for poly, init, refl, xo, endian in itertools.product(
+                _CRC32_POLYS, [0, 0xFFFFFFFF], [True, False], [0, 0xFFFFFFFF], ["little", "big"]):
+            yield dict(algo="crc32", poly=poly, init=init, reflected=refl, xorout=xo, start=start, endian=endian)
+        for algo in ("fletcher8", "fletcher8_256", "sum16", "negsum16"):
+            for endian in ("little", "big"):
+                p = dict(algo=algo, start=start, endian=endian)
+                if algo == "sum16":
+                    p.update(init=0, xorout=0)
+                yield p
+        yield dict(algo="negsum8", start=start)
         for xo in (0, 0xFF):
             yield dict(algo="sum8", init=0, xorout=xo, start=start)
         for init in (0, 0xFF):
@@ -178,12 +223,12 @@ class Structure:
             d["trailer"] = self.trailer.hex()
         if self.crc:
             c = {"algo": self.crc["algo"], "start": self.crc["start"]}
-            if self.crc["algo"] == "crc16":
+            if self.crc["algo"] in ("crc8", "crc16", "crc32"):
                 c.update(poly=self.crc["poly"], init=self.crc["init"],
                          reflected=self.crc["reflected"], xorout=self.crc["xorout"])
-            elif self.crc["algo"] in ("sum8", "xor8"):
+            elif self.crc["algo"] in ("sum8", "sum16", "negsum8", "negsum16", "xor8"):
                 c.update(init=self.crc.get("init", 0), xorout=self.crc.get("xorout", 0))
-            if self.chk_size == 2:
+            if self.chk_size > 1:
                 c["endian"] = self.crc["endian"]
             d["crc"] = c
         return d
@@ -262,9 +307,11 @@ def _autocorr_period(data: bytes) -> int:
     """Frame size of a constant-size stream with no sync bytes: where bytes repeat."""
     sample = data[:20000]
     scores = {}
-    for L in range(4, 129):
+    for L in range(4, min(129, len(sample) // 3)):
         n = len(sample) - L
         scores[L] = sum(sample[i] == sample[i + L] for i in range(n)) / n
+    if not scores:
+        raise InferenceError("capture too short to find a frame period; try `identify` with separate frames")
     best = max(scores.values())
     for L in sorted(scores):  # smallest period within 90% of the best (not a multiple of it)
         if scores[L] >= 0.9 * best:
@@ -314,10 +361,11 @@ def _report_checksum(rep: list[str], p: dict | None, trailer_len: int, origin: s
         rep.append("WARNING: no checksum matched; frames are validated by length only")
         return
     detail = ""
-    if p["algo"] == "crc16":
-        detail = (f" poly={p['poly']:#06x} init={p['init']:#06x} reflected={p['reflected']}"
-                  f" xorout={p['xorout']:#06x}")
-    endian = f", stored {p['endian']}-endian" if CHECKSUM_ALGOS[p["algo"]] == 2 else ""
+    if p["algo"] in ("crc8", "crc16", "crc32"):
+        w = CHECKSUM_ALGOS[p["algo"]] * 2 + 2
+        detail = (f" poly={p['poly']:#0{w}x} init={p['init']:#0{w}x} reflected={p['reflected']}"
+                  f" xorout={p['xorout']:#0{w}x}")
+    endian = f", stored {p['endian']}-endian" if CHECKSUM_ALGOS[p["algo"]] > 1 else ""
     rep.append(f"checksum {p['algo']}{detail} over bytes[{p['start']}:check]{endian}{origin}")
 
 
@@ -637,11 +685,11 @@ def learn_from_spec(kb: KnowledgeBase, spec, data: bytes) -> str:
     if fr.crc:
         c = fr.crc
         cd: dict = {"algo": c.algo, "start": c.start}
-        if c.algo == "crc16":
+        if c.algo in ("crc8", "crc16", "crc32"):
             cd.update(poly=c.poly, init=c.init, reflected=c.reflected, xorout=c.xorout)
-        elif c.algo in ("sum8", "xor8"):
+        elif c.algo in ("sum8", "sum16", "negsum8", "negsum16", "xor8"):
             cd.update(init=c.init, xorout=c.xorout)
-        if CHECKSUM_ALGOS[c.algo] == 2:
+        if CHECKSUM_ALGOS[c.algo] > 1:
             cd["endian"] = c.endian
         fd["crc"] = cd
     kb.record_run(fd, [(f.unit, f.type, f.scale, f.bias) for f in spec.fields], spec.protocol)

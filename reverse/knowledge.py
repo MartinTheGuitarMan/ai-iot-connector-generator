@@ -82,11 +82,17 @@ class KnowledgeBase:
         return [dict(e["params"]) for e in items]
 
     def learned_polys(self) -> list[int]:
-        return sorted({p["poly"] for p in self.learned_checksums() if p.get("algo") == "crc16" and p.get("poly")})
+        return sorted({p["poly"] for p in self.learned_checksums() if p.get("algo") in ("crc8", "crc16", "crc32") and p.get("poly")})
 
     def learned_framings(self) -> list[tuple[int, dict]]:
         items = sorted(self.data["framings"].values(), key=lambda e: -len(e["protocols"]))
         return [(len(e["protocols"]), dict(e["framing"])) for e in items]
+
+    def support(self, params: dict) -> int:
+        """How many distinct protocols a checksum parameter set has been validated on."""
+        p = {k: params[k] for k in sorted(params)}
+        e = self.data["checksums"].get(json.dumps(p, sort_keys=True))
+        return len(e["protocols"]) if e else 0
 
     def prior(self, unit: str | None, ftype: str, scale: float, bias: float) -> int:
         """How many distinct protocols used this encoding for this unit."""

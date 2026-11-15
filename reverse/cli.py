@@ -45,11 +45,42 @@ def main(argv: list[str] | None = None) -> int:
     lrn.add_argument("--capture", required=True, type=Path)
     lrn.add_argument("--knowledge", type=Path, default=DEFAULT_KB)
 
+    idn = sub.add_parser("identify", help="few-frame mode: sync/trailer/checksum from frames in a text file (one hex frame per line)")
+    idn.add_argument("--frames", required=True, type=Path)
+    idn.add_argument("--knowledge", type=Path, default=DEFAULT_KB)
+    idn.add_argument("--protocol", help="name to record the rule under (enables learning)")
+
     know = sub.add_parser("knowledge", help="show what the knowledge base has learned")
     know.add_argument("--knowledge", type=Path, default=DEFAULT_KB)
 
     args = ap.parse_args(argv)
     kb = KnowledgeBase(args.knowledge)
+
+    if args.command == "identify":
+        from reverse.identify import identify
+        from reverse.textlayer import classify, decode_hex_ascii, nmea_check
+        lines = [l for l in args.frames.read_text().splitlines() if l.strip() and not l.startswith("#")]
+        kind = classify(lines)
+        if kind == "nmea":
+            ok = [nmea_check(l)["ok"] for l in lines]
+            print(f"NMEA-style text, {len(lines)} sentence(s): XOR of characters between the start mark and '*' "
+                  f"holds on {sum(ok)}/{len(ok)} (stored as two ASCII hex digits)")
+            return 0 if all(ok) else 1
+        if kind == "hex_ascii":
+            print("ASCII-hex framing (':' + hex); decoded to bytes before identification")
+            frames = [decode_hex_ascii(l) for l in lines]
+        else:
+            frames = [bytes.fromhex(l.replace(" ", "")) for l in lines]
+        res = identify(frames, kb)
+        print(f"{res['frames']} frame(s), confidence {res['confidence']}, "
+              f"{res['n_candidates_validating']} rule(s) validate all of them")
+        for m in res["matches"]:
+            print("  ", m)
+        if args.protocol:
+            from reverse.identify import learn_from_identification
+            print(learn_from_identification(kb, res, args.protocol))
+            kb.save()
+        return 0 if res["matches"] else 1
 
     if args.command == "knowledge":
         print(f"{args.knowledge}: {kb.summary()}")

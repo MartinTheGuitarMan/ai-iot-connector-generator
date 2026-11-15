@@ -101,15 +101,17 @@ class MessageSpec:
     payload_length: int | None = None  # framed_binary: expected payload size (optional)
 
 
-CHECKSUM_ALGOS = {"crc16": 2, "fletcher8": 2, "sum8": 1, "xor8": 1}  # algo -> stored size in bytes
+CHECKSUM_ALGOS = {"crc16": 2, "fletcher8": 2, "fletcher8_256": 2, "sum8": 1, "sum16": 2,
+                  "negsum8": 1, "negsum16": 2, "xor8": 1, "crc8": 1, "crc32": 4}  # algo -> stored size in bytes
 
 
 @dataclass
 class CrcSpec:
     """Frame check trailer of a framed_binary frame.
 
-    algo: crc16 (Rocksoft-style poly/init/reflected/xorout), fletcher8 (two mod-255
-    sums, stored as (sum2 << 8) | sum1), sum8 (byte sum mod 256) or xor8 (xor of bytes).
+    algo: crc8 / crc16 / crc32 (Rocksoft-style poly/init/reflected/xorout), fletcher8 (two mod-255
+    sums, stored as (sum2 << 8) | sum1), fletcher8_256 (same with mod 256, as u-blox UBX), sum8 / sum16
+    (byte sum, init/xorout applied), negsum8 / negsum16 (two's complement of the sum) or xor8.
     The checked bytes run from `start` up to just before the check value.
     """
 
@@ -246,8 +248,8 @@ class ProtocolSpec:
                 raise SpecError(f"unsupported checksum algo {fr.crc.algo!r} (one of {sorted(CHECKSUM_ALGOS)})")
             if fr.crc.endian not in ("little", "big"):
                 raise SpecError("crc.endian must be 'little' or 'big'")
-            if fr.crc.algo == "crc16" and not fr.crc.poly:
-                raise SpecError("crc16 needs a poly")
+            if fr.crc.algo in ("crc8", "crc16", "crc32") and not fr.crc.poly:
+                raise SpecError(f"{fr.crc.algo} needs a poly")
             chk_size = CHECKSUM_ALGOS[fr.crc.algo]
             if fr.crc.start < 0 or fr.crc.start > fr.payload_offset:
                 raise SpecError("crc.start must lie between the frame start and the payload start")
