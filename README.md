@@ -299,8 +299,8 @@ python scripts/run_corpus.py
 python -m reverse.cli identify --frames frames.txt     # one hex frame per line; ':7A8ED00B9' and '$..*hh' lines work too
 ```
 
-Currently 23 of 23 cases find the documented rule (Modbus RTU, DNP3, UBX, Tuya, Plantower, Daly, JBD, Sensirion
-SHDLC and I2C words, XBee, Winsen, Cressi, Victron VE.Direct HEX, wired M-Bus, 1-Wire DS18B20, WHOOP, PPP/HDLC, the Davis console CRC, Modbus ASCII, MAVLink);
+Currently 25 of 25 cases find the documented rule (Modbus RTU, DNP3, UBX, Tuya, Plantower, Daly, JBD, Sensirion
+SHDLC and I2C words, XBee, Winsen, Cressi, Victron VE.Direct HEX, wired M-Bus, 1-Wire DS18B20, WHOOP, PPP/HDLC, the Davis console CRC, Modbus ASCII, MAVLink, Dynamixel 2.0, CRSF);
 12 of them with high confidence. Checksum families: CRC-8/16/32 (poly, init, reflection, final XOR, byte order),
 Fletcher, 8/16-bit sums and negated sums, XOR. Byte-stuffed frames (HDLC/PPP 7E/7D, SLIP) are unstuffed first,
 but only when every frame starts and ends with the same flag byte (`reverse/stuffing.py`). Also covered: SeaTalk 1's low-nibble length rule
@@ -320,6 +320,11 @@ Seeded CRCs (MAVLink's CRC_EXTRA: a constant byte, different per message type, a
 but never sent) are solved, not enumerated: `identify()['seeded_crc16']` lists the CRC-16 parameters and the solved byte,
 per message type when the frames can be grouped by a header byte and every group has at least two frames. One real
 HEARTBEAT frame gives the right rule plus a chance candidate, at low confidence.
+
+Nested checks (CRSF: a CRC-8 sits inside the data a second CRC-8 covers) are searched one level deep. When nothing
+fits, a full CRC-8 polynomial sweep runs, but only with at least 3 frames and with its extra chance matches priced
+into the confidence. The real CRSF frame in the corpus is a single frame, so its inner CRC (poly 0xBA, not a built-in)
+is NOT found; the synthetic test shows the same rule is found once there are 4 frames.
 
 Be careful with the numbers: one or two frames cannot separate rules that agree by chance (the output says
 `confidence: low`), a constant solved from the data (Victron's 0x55) counts as a free parameter, and the Modbus case

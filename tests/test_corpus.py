@@ -366,3 +366,41 @@ def test_seeded_group_needs_two_frames_per_message_type():
         crc = _crc_generic(body + bytes([ex]), 16, 0x1021, 0xFFFF, True, 0)
         frames.append(b"\xfe" + body + crc.to_bytes(2, "little"))
     assert not [s for s in identify(frames)["seeded_crc16"] if s["groups"] > 1]
+
+
+def test_dynamixel_protocol2_all_frames_blind_unambiguous():
+    import yaml
+    from reverse.identify import identify
+    c = yaml.safe_load(open(Path(__file__).resolve().parent.parent / "corpus/cases/dynamixel_protocol2.yaml"))
+    r = identify([bytes.fromhex(f.replace(" ", "")) for f in c["frames"]])
+    assert len(c["frames"]) == 24 and r["confidence"] == "high" and r["n_candidates_validating"] == 1
+    m = r["matches"][0]
+    assert (m["algo"], m["poly"], m["init"], m["reflected"], m["xorout"], m["endian"], m["start"]) == \
+           ("crc16", 0x8005, 0, False, 0, "little", 0)
+
+
+def test_crsf_single_real_frame_outer_found_inner_not():
+    from reverse.identify import identify
+    from reverse.infer import _crc_generic
+    f = bytes.fromhex("c80832eeea1005362" "6a0")
+    assert _crc_generic(f[2:-1], 8, 0xD5, 0, False, 0) == f[-1] == 0xA0         # both CRCs hold on the real frame
+    assert _crc_generic(f[2:-2], 8, 0xBA, 0, False, 0) == f[-2] == 0x26
+    r = identify([f])
+    assert r["confidence"] == "low" and r["matches"][0]["poly"] == 0xD5
+    assert r["nested"] is None and not r["poly_sweep"]                           # one frame cannot pay for the sweep
+
+
+def test_nested_crc_and_poly_sweep_synthetic():
+    """SYNTHETIC CRSF-shaped frames (random byte) with the documented polynomials D5 and BA."""
+    import random
+    from reverse.identify import identify
+    from reverse.infer import _crc_generic
+    rnd = random.Random(3)
+    frames = []
+    for _ in range(4):
+        body = bytes([0xC8, 9, 0x32, 0xEE, 0xEA, 0x10, 0x05, rnd.randrange(256)])
+        b2 = body + bytes([_crc_generic(body[2:], 8, 0xBA, 0, False, 0)])
+        frames.append(b2 + bytes([_crc_generic(b2[2:], 8, 0xD5, 0, False, 0)]))
+    r = identify(frames)
+    assert r["matches"][0]["poly"] == 0xD5
+    assert r["nested"] and r["nested"]["matches"][0]["poly"] == 0xBA and r["nested"]["poly_sweep"]

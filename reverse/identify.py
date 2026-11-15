@@ -39,7 +39,7 @@ def _common_prefix(frames: list[bytes], cap: int) -> int:
     return n
 
 
-def identify(frames: list[bytes], kb: KnowledgeBase | None = None, max_results: int = 5) -> dict:
+def identify(frames: list[bytes], kb: KnowledgeBase | None = None, max_results: int = 5, _depth: int = 0) -> dict:
     kb = kb or KnowledgeBase()
     frames = [f for f in frames if f]
     if not frames:
@@ -86,6 +86,15 @@ def identify(frames: list[bytes], kb: KnowledgeBase | None = None, max_results: 
                         p["endian"] = "big"
                     if all(_check_ok(f, p, trailer_len) for f in frames):
                         hits.append((trailer_len, p)); solved = True
+    # Full CRC-8 polynomial sweep: only when nothing else fits and there are enough frames to pay for the
+    # extra search (255 polys x 8 parameter sets x starts of chance matches, about 11 bits).
+    swept = False
+    if not hits and len(frames) >= 3:
+        for start in range(0, min(sync_len + 3, min_len // 2)):
+            for poly, init, refl, xo in itertools.product(range(1, 256), (0, 0xFF), (True, False), (0, 0xFF)):
+                p = dict(algo="crc8", poly=poly, init=init, reflected=refl, xorout=xo, start=start)
+                if min_len > start + 1 and all(_check_ok(f, p, 0) for f in frames):
+                    hits.append((0, p)); swept = True
     # Tolerant pass: real captures hold corrupted frames. Only when nothing fits all of them, keep the
     # rules that fit the most frames, if that is at least 70% and at least 4 frames. Confidence is capped
     # at medium and the outliers are reported so a person can look at them.
@@ -128,6 +137,15 @@ def identify(frames: list[bytes], kb: KnowledgeBase | None = None, max_results: 
         uniq.append((t, p))
     if len(uniq) > 1:   # several rules fit: ones validated on other protocols first (stable, so no reshuffle otherwise)
         uniq.sort(key=lambda h: -kb.support({k: v for k, v in h[1].items()}))
+    # Nested check (CRSF extended frames: a CRC-8 sits inside the data a second CRC-8 covers): when the
+    # winning rule is a 1-byte check with no trailer, take it off and look again. One level only.
+    nested = None
+    if (_depth == 0 and uniq and uniq[0][0] == 0 and CHECKSUM_ALGOS[uniq[0][1]["algo"]] == 1
+            and not partial and all(len(f) > 4 for f in frames)):
+        inner = identify([f[:-1] for f in frames], kb, max_results=3, _depth=1)
+        if inner["matches"] and not inner.get("seeded_crc16"):
+            nested = {"matches": inner["matches"], "confidence": inner["confidence"],
+                      "frames": inner["frames"], "poly_sweep": inner["poly_sweep"]}
     bits = 8 * (CHECKSUM_ALGOS[uniq[0][1]["algo"]] if uniq else 1)
     if partial:
         bits = min(bits, 8 * 2)
@@ -138,10 +156,13 @@ def identify(frames: list[bytes], kb: KnowledgeBase | None = None, max_results: 
         "n_candidates_validating": len(uniq),
         # chance that a random rule validates all frames ~ candidates_tried * 2^(-bits*frames)
         "confidence": (lambda c: "medium" if partial and c == "high" else c)(
-            (lambda n: "high" if n * bits >= 40 else "medium" if n * bits >= 20 else "low")(
+            (lambda n: "high" if n * bits - (11 if swept else 0) >= 40 else
+                       "medium" if n * bits - (11 if swept else 0) >= 20 else "low")(
                 partial["validated"] if partial else len(frames) - (1 if solved else 0))),
         "constant_solved_from_data": solved,
         "partial": partial,
+        "nested": nested,
+        "poly_sweep": swept,
         "seeded_crc16": seeded[:max_results],
         "seeded_confidence": (lambda b: "high" if b >= 40 else "medium" if b >= 20 else "low")(
             16 * len(frames) - 8 * max((s["groups"] for s in seeded), default=1)) if seeded else None,

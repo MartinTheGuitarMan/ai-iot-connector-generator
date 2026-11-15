@@ -1,0 +1,38 @@
+id: dynamixel_protocol2
+name: 'ROBOTIS Dynamixel Protocol 2.0 (servo bus): FF FF FD 00, CRC-16 low byte first'
+source: https://emanual.robotis.com/docs/en/dxl/protocol2/ (24 complete example packets; partial fast-sync statuses left out)
+doc_rule: 16-bit CRC over header..parameters; the page points to a separate CRC page. The CRC is poly 8005, init 0, no reflection, no final XOR, low byte first (checked by computing all 24 frames)
+note: Byte stuffing (FF FF FD -> FF FF FD FD) is documented but no example packet contains it, so insertion stuffing is untested. Frames transcribed through a page summariser, then verified by computing every CRC; all 24 pass.
+frames:
+- FF FF FD 00 01 03 00 01 19 4E
+- FF FF FD 00 01 07 00 55 00 06 04 26 65 5D
+- FF FF FD 00 FE 03 00 01 31 42
+- FF FF FD 00 02 07 00 55 00 06 04 26 6F 6D
+- FF FF FD 00 01 07 00 02 84 00 04 00 1D 15
+- FF FF FD 00 01 08 00 55 00 A6 00 00 00 8C C0
+- FF FF FD 00 01 09 00 03 74 00 00 02 00 00 CA 89
+- FF FF FD 00 01 04 00 55 00 A1 0C
+- FF FF FD 00 01 09 00 04 68 00 C8 00 00 00 AE 8E
+- FF FF FD 00 01 03 00 05 02 CE
+- FF FF FD 00 01 04 00 06 01 A1 E6
+- FF FF FD 00 01 03 00 08 2F 4E
+- FF FF FD 00 01 08 00 10 01 44 58 4C 22 B1 DC
+- FF FF FD 00 01 08 00 20 01 43 54 52 4C 16 F5
+- FF FF FD 00 01 08 00 20 02 43 54 52 4C 9E F5
+- FF FF FD 00 FE 09 00 82 84 00 04 00 01 02 CE FA
+- FF FF FD 00 02 08 00 55 00 1F 08 00 00 BA BE
+- FF FF FD 00 FE 11 00 83 74 00 04 00 01 96 00 00 00 02 AA 00 00 00 82 87
+- FF FF FD 00 FE 0A 00 8A 84 00 04 00 03 07 04 20 F2
+- FF FF FD 00 FE 0D 00 92 01 90 00 02 00 02 92 00 01 00 1A 05
+- FF FF FD 00 01 06 00 55 00 77 00 C3 69
+- FF FF FD 00 02 05 00 55 00 24 8B A9
+- FF FF FD 00 FE 10 00 93 01 20 00 02 00 A0 00 02 1F 00 01 00 50 B7 68
+- FF FF FD 00 FE 12 00 9A 03 84 00 04 00 07 7C 00 02 00 04 92 00 01 00 DA 2D
+reference:
+  algo: crc16
+  poly: 32773
+  init: 0
+  reflected: false
+  xorout: 0
+  start: 0
+  endian: little

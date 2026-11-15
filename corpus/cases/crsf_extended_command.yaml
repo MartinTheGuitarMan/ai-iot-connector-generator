@@ -1,0 +1,14 @@
+id: crsf_extended_command
+name: CRSF (Crossfire/ExpressLRS) extended command frame with two nested CRC-8s
+source: https://github.com/crsf-wg/crsf/wiki/CRSF_FRAMETYPE_COMMAND (frame c8 08 32 ee ea 10 05 36 26 a0); CRC-8 poly D5 from https://github.com/crsf-wg/crsf/wiki/Message-Format
+doc_rule: 'Outer CRC-8 poly D5, init 0, over bytes from the type byte to the end of payload. Inner CRC-8 poly BA over the same bytes up to the payload end, stored just before the outer CRC (checked by computing: D5 gives A0, BA gives 26)'
+note: 'One 10-byte frame. The outer rule is found at low confidence. The inner BA CRC is NOT found: BA is not a built-in polynomial and the full poly sweep needs 3 frames. Real failure, documented.'
+frames:
+- c8 08 32 ee ea 10 05 36 26 a0
+reference:
+  algo: crc8
+  poly: 213
+  init: 0
+  reflected: false
+  xorout: 0
+  start: 2
