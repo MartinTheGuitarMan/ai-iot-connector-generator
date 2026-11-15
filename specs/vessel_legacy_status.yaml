@@ -2,23 +2,24 @@ protocol: vessel_legacy
 transport: framed_binary
 framing:
   sync: 7ec3
+  payload_offset: 5
   length_offset: 2
   length_overhead: 7
   type_offset: 3
-  payload_offset: 5
   seq_offset: 4
   crc:
+    algo: crc16
+    start: 2
     poly: 32773
     init: 65535
     reflected: true
     xorout: 0
-    start: 2
     endian: little
 message:
   id: status
-  description: Inferred from a capture (791 frames, type 0x30)
-  type_value: 48
+  description: Inferred from a capture (791 frames)
   payload_length: 3
+  type_value: 48
 fields:
 - name: flags
   type: uint8

@@ -2,23 +2,24 @@ protocol: vessel_legacy
 transport: framed_binary
 framing:
   sync: 7ec3
+  payload_offset: 5
   length_offset: 2
   length_overhead: 7
   type_offset: 3
-  payload_offset: 5
   seq_offset: 4
   crc:
+    algo: crc16
+    start: 2
     poly: 32773
     init: 65535
     reflected: true
     xorout: 0
-    start: 2
     endian: little
 message:
   id: engine
-  description: Inferred from a capture (1974 frames, type 0x10)
-  type_value: 16
+  description: Inferred from a capture (1974 frames)
   payload_length: 5
+  type_value: 16
 fields:
 - name: rpm
   type: uint16_be

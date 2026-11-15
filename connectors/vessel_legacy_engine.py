@@ -21,45 +21,53 @@ SYNC = bytes.fromhex("7ec3")
 LENGTH_OFFSET = 2
 LENGTH_OVERHEAD = 7
 TYPE_OFFSET = 3
-PAYLOAD_OFFSET = 5
 TYPE_VALUE = 0x10
+PAYLOAD_OFFSET = 5
 PAYLOAD_LENGTH = 5
-CRC_LEN = 2
-CRC_START = 2
-CRC_POLY = 0xa001
-CRC_INIT = 0xffff
-CRC_XOROUT = 0x0000
-CRC_BYTEORDER = "little"
+TRAILER = bytes.fromhex("")
+MIN_FRAME = 7
+CHK_SIZE = 2
+CHK_START = 2
+CHK_POLY = 0xa001
+CHK_INIT = 0xffff
+CHK_XOROUT = 0x0000
+CHK_BYTEORDER = "little"
 
 
-def _crc16(data: bytes) -> int:
-    crc = CRC_INIT
+def _checksum(data: bytes) -> int:
+    crc = CHK_INIT
     for b in data:
         crc ^= b
         for _ in range(8):
-            crc = (crc >> 1) ^ CRC_POLY if crc & 1 else crc >> 1
-    return crc ^ CRC_XOROUT
+            crc = (crc >> 1) ^ CHK_POLY if crc & 1 else crc >> 1
+    return crc ^ CHK_XOROUT
 
 
-def _crc_ok(frame: bytes) -> bool:
-    stored = int.from_bytes(frame[-2:], CRC_BYTEORDER)
-    return _crc16(frame[CRC_START:-2]) == stored
+def _frame_ok(frame: bytes) -> bool:
+    if len(frame) < MIN_FRAME:
+        return False
+    end = len(frame) - len(TRAILER) - CHK_SIZE
+    stored = int.from_bytes(frame[end:end + CHK_SIZE], CHK_BYTEORDER)
+    return _checksum(frame[CHK_START:end]) == stored
 
 
 def iter_frames(stream: bytes) -> Iterator[bytes]:
     """Yield every well-formed frame (any message type) found in a byte stream.
 
-    Resynchronises on the sync bytes after line noise or a corrupt frame:
-    a candidate whose length or CRC does not check out is skipped one
-    byte at a time.
+    Resynchronises after line noise or a corrupt frame: a candidate whose length,
+    trailer or check value does not hold up is skipped one byte at a time,
+    looking for the sync bytes again (or, without sync bytes, for the next offset
+    where the check value fits).
     """
     i, n = 0, len(stream)
-    while True:
+    while i < n:
         i = stream.find(SYNC, i)
-        if i < 0 or i + LENGTH_OFFSET >= n:
+        if i < 0:
+            return
+        if i + LENGTH_OFFSET >= n:
             return
         end = i + stream[i + LENGTH_OFFSET] + LENGTH_OVERHEAD
-        if end <= n and _crc_ok(stream[i:end]):
+        if end <= n and _frame_ok(stream[i:end]):
             yield stream[i:end]
             i = end
         else:
@@ -73,17 +81,21 @@ def parse(
 ) -> CanonicalReading | None:
     """Parse one engine frame into a CanonicalReading.
 
-    Returns None for frames of another message type or that fail the
-    length / CRC checks. The wire has no clock, so the caller supplies
+    Returns None for frames of another message type or that fail the length /
+    trailer / check-value tests. The wire has no clock, so the caller supplies
     the timestamp.
     """
-    if frame[: len(SYNC)] != SYNC or len(frame) <= max(LENGTH_OFFSET, TYPE_OFFSET):
+    if len(frame) < MIN_FRAME:
         return None
-    if len(frame) != frame[LENGTH_OFFSET] + LENGTH_OVERHEAD or not _crc_ok(frame):
+    if frame[: len(SYNC)] != SYNC:
+        return None
+    if len(frame) != frame[LENGTH_OFFSET] + LENGTH_OVERHEAD:
+        return None
+    if not _frame_ok(frame):
         return None
     if frame[TYPE_OFFSET] != TYPE_VALUE:
         return None
-    payload = frame[PAYLOAD_OFFSET:len(frame) - CRC_LEN]
+    payload = frame[PAYLOAD_OFFSET:len(frame) - len(TRAILER) - CHK_SIZE]
     if len(payload) != PAYLOAD_LENGTH:
         return None
 

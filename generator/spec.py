@@ -101,34 +101,48 @@ class MessageSpec:
     payload_length: int | None = None  # framed_binary: expected payload size (optional)
 
 
+CHECKSUM_ALGOS = {"crc16": 2, "fletcher8": 2, "sum8": 1, "xor8": 1}  # algo -> stored size in bytes
+
+
 @dataclass
 class CrcSpec:
-    """CRC16 trailer of a framed_binary frame (Rocksoft-style parameters)."""
+    """Frame check trailer of a framed_binary frame.
 
-    poly: int
+    algo: crc16 (Rocksoft-style poly/init/reflected/xorout), fletcher8 (two mod-255
+    sums, stored as (sum2 << 8) | sum1), sum8 (byte sum mod 256) or xor8 (xor of bytes).
+    The checked bytes run from `start` up to just before the check value.
+    """
+
+    poly: int = 0  # crc16 only
     algo: str = "crc16"
     init: int = 0
-    reflected: bool = False  # reflect input bytes and output
+    reflected: bool = False  # crc16 only: reflect input bytes and output
     xorout: int = 0
-    start: int = 0  # first frame byte covered by the CRC (end = just before the CRC)
-    endian: str = "little"  # byte order of the stored CRC
+    start: int = 0  # first frame byte covered by the check
+    endian: str = "little"  # byte order of a 2-byte check value
 
 
 @dataclass
 class FramingSpec:
     """Frame layout shared by every message of a framed_binary protocol.
 
-    Total frame length = frame[length_offset] + length_overhead, i.e. the
-    overhead covers sync + header + CRC bytes. The payload runs from
-    payload_offset up to the CRC (or the end of the frame without a CRC).
+    Frames are delimited in one of two ways: a length byte (total length =
+    frame[length_offset] + length_overhead, the overhead counting sync, header,
+    check and trailer bytes) or a constant `fixed_length`. A frame may start with
+    `sync` bytes (empty = none; then only fixed_length works and the stream is
+    re-synchronised on the check value), may end with constant `trailer` bytes
+    after the check value, and may have a message-type byte (`type_offset`) or not
+    (single-message protocols). The payload runs from payload_offset up to the check.
     """
 
-    sync: str  # hex string, e.g. "7ec3"
-    length_offset: int
-    length_overhead: int
-    type_offset: int
-    payload_offset: int
+    sync: str = ""  # hex string, e.g. "7ec3"; "" = no sync bytes
+    payload_offset: int = 0
+    length_offset: int | None = None
+    length_overhead: int | None = None
+    fixed_length: int | None = None
+    type_offset: int | None = None
     seq_offset: int | None = None  # informational: rolling sequence counter
+    trailer: str = ""  # hex string of constant bytes after the check value
     crc: CrcSpec | None = None
 
 
@@ -209,34 +223,57 @@ class ProtocolSpec:
             raise SpecError("framed_binary spec needs a 'framing' section")
         try:
             sync = bytes.fromhex(fr.sync)
+            trailer = bytes.fromhex(fr.trailer)
         except ValueError:
-            raise SpecError(f"framing.sync {fr.sync!r} is not a hex string") from None
-        if not sync:
-            raise SpecError("framing.sync must not be empty")
-        if self.message.type_value is None:
-            raise SpecError("framed_binary message needs 'type_value'")
-        header_end = max(fr.length_offset, fr.type_offset, fr.seq_offset or 0)
-        if min(fr.length_offset, fr.type_offset) < len(sync):
-            raise SpecError("length/type offsets must lie after the sync bytes")
-        if fr.payload_offset <= header_end:
-            raise SpecError("framing.payload_offset must come after the header bytes")
-        if fr.length_overhead < fr.payload_offset:
-            raise SpecError("framing.length_overhead must cover at least the header")
+            raise SpecError("framing.sync / framing.trailer must be hex strings") from None
+
+        length_based = fr.length_offset is not None or fr.length_overhead is not None
+        if length_based and fr.fixed_length is not None:
+            raise SpecError("framing: use either length_offset/length_overhead or fixed_length, not both")
+        if length_based and (fr.length_offset is None or fr.length_overhead is None):
+            raise SpecError("framing: length_offset and length_overhead go together")
+        if not length_based and fr.fixed_length is None:
+            raise SpecError("framing needs length_offset+length_overhead or fixed_length")
+        if not sync and not fr.fixed_length:
+            raise SpecError("a framed_binary protocol without sync bytes needs fixed_length")
+
+        if (fr.type_offset is None) != (self.message.type_value is None):
+            raise SpecError("framing.type_offset and message.type_value must be given together")
+
+        chk_size = 0
         if fr.crc is not None:
-            if fr.crc.algo != "crc16":
-                raise SpecError(f"unsupported crc algo {fr.crc.algo!r} (only 'crc16')")
+            if fr.crc.algo not in CHECKSUM_ALGOS:
+                raise SpecError(f"unsupported checksum algo {fr.crc.algo!r} (one of {sorted(CHECKSUM_ALGOS)})")
             if fr.crc.endian not in ("little", "big"):
                 raise SpecError("crc.endian must be 'little' or 'big'")
-            if fr.crc.start < len(sync) or fr.crc.start > fr.payload_offset:
-                raise SpecError("crc.start must be after the sync and not past the payload start")
+            if fr.crc.algo == "crc16" and not fr.crc.poly:
+                raise SpecError("crc16 needs a poly")
+            chk_size = CHECKSUM_ALGOS[fr.crc.algo]
+            if fr.crc.start < 0 or fr.crc.start > fr.payload_offset:
+                raise SpecError("crc.start must lie between the frame start and the payload start")
+
+        headers = [o for o in (fr.length_offset, fr.type_offset, fr.seq_offset) if o is not None]
+        if any(o < len(sync) for o in headers):
+            raise SpecError("header offsets must lie after the sync bytes")
+        if fr.payload_offset < len(sync) or (headers and fr.payload_offset <= max(headers)):
+            raise SpecError("framing.payload_offset must come after the sync and header bytes")
+        min_frame = fr.payload_offset + chk_size + len(trailer)
+        total = fr.length_overhead if length_based else fr.fixed_length
+        if total < min_frame:
+            raise SpecError(
+                f"framing too short: sync/header/check/trailer need at least {min_frame} bytes, got {total}"
+            )
+
         payload_max = self.message.payload_length
+        if payload_max is None and not length_based:
+            payload_max = fr.fixed_length - fr.payload_offset - chk_size - len(trailer)
         for f in self.fields:
             end = f.offset + FRAMED_BINARY_FIELD_WIDTHS[f.type]
             if f.offset < 0:
                 raise SpecError(f"field {f.name!r} has a negative offset")
             if payload_max is not None and end > payload_max:
                 raise SpecError(
-                    f"field {f.name!r} ends at payload byte {end}, beyond payload_length {payload_max}"
+                    f"field {f.name!r} ends at payload byte {end}, beyond payload length {payload_max}"
                 )
 
     @staticmethod

@@ -1,0 +1,48 @@
+protocol: cressi_nepto
+transport: framed_binary
+framing:
+  sync: aaaaaa
+  length_offset: 3
+  length_overhead: 8
+  type_offset: 4
+  payload_offset: 5
+  trailer: '55'
+  crc:
+    algo: crc16
+    poly: 4129
+    init: 0
+    reflected: false
+    xorout: 0
+    start: 3
+    endian: little
+message:
+  id: identity
+  description: Identity response of a Cressi Nepto dive computer; frame layout and
+    the two example frames from a published reverse-engineering write-up (sjaeckel.github.io,
+    2024-04-23). CRC parameters found by this repo's checksum sweep.
+  type_value: 33
+  payload_length: 11
+fields:
+- name: serial
+  type: uint32_le
+  offset: 0
+  unit: none
+- name: model
+  type: uint8
+  offset: 4
+  unit: none
+- name: firmware
+  type: uint8
+  offset: 5
+  unit: none
+canonical:
+  measurements:
+  - name: serial
+    field: serial
+    unit: none
+  - name: model
+    field: model
+    unit: none
+  - name: firmware
+    field: firmware
+    unit: none

@@ -24,6 +24,8 @@ def test_generated_source_is_valid_python():
         "specs/weather_station_obs.yaml",
         "specs/weather_station_obs_full.yaml",
         "specs/weather_station_modbus.yaml",
+        "specs/cressi_nepto_identity.yaml",
+        "specs/vessel_legacy_engine.yaml",
     ):
         spec = ProtocolSpec.from_yaml(path)
         source = generate(spec)

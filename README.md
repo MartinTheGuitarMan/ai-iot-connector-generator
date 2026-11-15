@@ -61,13 +61,18 @@ cover most real device wire formats:
   voltage, UV index) — the same real-world fragmentation story, a second
   wire format for the same category of device.
 
-- **framed_binary** — a byte stream of self-delimiting frames (sync bytes,
-  length field, message-type byte, payload, CRC16 trailer), fields addressed by
-  byte offset (`uint8`/`int16_le`/`uint32_be`/..., `scale`, `bias`). The shape of
-  many legacy serial/RS-485 device protocols. Generated modules expose
-  `iter_frames(stream)` (resyncs on the sync bytes, drops corrupt frames and line
-  noise) and `parse(frame, device_id, timestamp)`; the wire has no clock, so the
-  caller supplies the timestamp. See "Reverse: capture → spec" below.
+- **framed_binary** — a byte stream of self-delimiting frames, fields addressed by
+  byte offset (`uint8`/`int16_le`/`uint32_be`/..., `scale`, `bias`). The shape of many
+  legacy serial/RS-485 device protocols. A frame is delimited by a length byte *or* a
+  constant `fixed_length`; may start with `sync` bytes (or have none, then the stream
+  re-synchronises on the check value); may have a message-type byte (or be
+  single-message); carries a check value (`crc16` with any polynomial/init/reflection,
+  `fletcher8`, `sum8`, `xor8`) and optionally constant `trailer` bytes after it.
+  Generated modules expose `iter_frames(stream)` (resyncs after noise, drops corrupt
+  frames) and `parse(frame, device_id, timestamp)`; the wire has no clock, so the caller
+  supplies the timestamp. `specs/cressi_nepto_identity.yaml` is a real device (a dive
+  computer) written from frames published in a reverse-engineering write-up, checked
+  in tests against those exact bytes. See "Reverse: capture → spec" below.
 
 Every generated connector's `parse(...)` returns a `canonical.CanonicalReading`
 (device_id, protocol, message_type, ISO 8601 timestamp, location, a list of
@@ -208,13 +213,15 @@ documentation at all, just a captured byte stream and a few readings a human not
 off the device's own display.
 
 ```
-reverse/infer.py            stage 1: sync, length field, type/seq bytes, CRC16 variant
-                            (swept), message types, payload sizes - from the bytes alone
+reverse/infer.py            stage 1: frame structure from the bytes alone (sync, length
+                            field or constant size, trailer, checksum family + parameters,
+                            sequence counter, type byte, payload size)
                             stage 2: fit every (offset, width, endianness, signedness)
                             candidate to the anchors: value = raw * scale + bias
-reverse/cli.py              python -m reverse.cli infer --capture ... --anchors ... --out-dir specs/
+reverse/knowledge.py        what earlier validated runs learned (see below)
+reverse/cli.py              python -m reverse.cli infer | learn | knowledge
 scripts/gen_legacy_demo.py  simulates an unknown device with a HIDDEN protocol and writes
-                            capture.bin + anchors.yaml + truth.csv
+                            capture.bin + anchors.yaml + truth.csv (4 profiles, below)
 tests/test_framed_binary.py end-to-end: infer from capture+anchors only, generate connectors,
                             score every decoded value against truth.csv
 ```
@@ -223,21 +230,65 @@ Inferred specs go through the same `ProtocolSpec` loader and codegen as hand-wri
 ones (`specs/vessel_legacy_*.yaml` → `connectors/vessel_legacy_*.py` are checked-in
 output of the demo). Anchors look like
 `{message: engine, field: rpm, unit: rpm, ordinal: 120, value: 1480}`, where `ordinal`
-is the frame's (unwrapped) sequence counter.
+is the frame's (unwrapped) sequence counter, or its index among the valid frames when
+the protocol has none.
+
+The simulated devices are modelled on shapes that real devices have and that broke the
+first version of the tool:
+
+| profile | shape |
+|---|---|
+| `vessel` | sync `7E C3`, length byte, type byte, sequence counter, CRC-16/MODBUS |
+| `vessel_oddcrc` | the same layout with an obscure CRC polynomial (in no catalogue) |
+| `cressi` | 3-byte sync, length, command, CRC-16/XMODEM, then a constant end byte; no sequence counter |
+| `apc` | constant 19-byte frames: **no sync, no length, no type byte**, Fletcher-8 check (not a CRC) |
+
+### It gets smarter with use
+
+`reverse/knowledge.json` (plain JSON, meant to be read and diffed) records what *validated*
+runs established, and later runs use it:
+
+- **checksums** — exact parameter sets that validated real frames are tried first, and
+  their polynomials extend the built-in catalogue. A device with an unusual CRC only has
+  to be identified once.
+- **framings** — a capture that fits a known layout is recognised immediately, without
+  the heuristics.
+- **encodings** — when the anchors cannot tell two encodings apart (int8 vs uint8 when a
+  temperature never went below zero), the encoding seen for that unit in more distinct
+  protocols breaks the tie.
+
+```
+python -m reverse.cli infer ...              # records the run if it validated
+python -m reverse.cli learn --spec s.yaml --capture c.bin   # teach it a device it cannot work out
+python -m reverse.cli knowledge              # what has it learned so far
+```
+
+Rules that keep it honest:
+
+- Only validated runs teach anything: a checksum must have matched the real frames and
+  every anchor must have fitted. `learn` refuses a spec whose generated connector does
+  not explain the capture (>= 20 frames, >= 90% of the bytes).
+- A guess is never recorded as evidence. A prior can only choose between representations
+  of the same bytes at the same offset and scale (signedness, width), never override what
+  the anchors show, and a fit that needed a tie-break is not written back, otherwise the
+  knowledge base would reinforce its own habits (there is a regression test for exactly
+  that bug).
+- Evidence is counted per distinct protocol, not per run.
 
 What this does and doesn't show:
 
 - The inference never sees the device's spec; the truth is only used to score. That
   avoids the circularity noted above ("generated from the connectors' own assumptions").
-- Ambiguity is resolved by the data, not guessed: sub-zero anchors force `int8`,
-  anchors spanning a low-byte rollover fix a counter's byte order. If the anchors can't
-  tell two encodings apart, the report says how many lower-ranked fits remain, and
-  ties go to the roundest scale. Choose anchors that span the range.
-- The simulated device is easy mode: no encryption, no bit-packed fields, no
-  multi-frame messages, 2-byte sync, a CRC from a small catalogue of CRC16 variants.
-  Unanchored payload bytes are reported as unmapped, not guessed.
-- Deterministic heuristics only, no LLM yet. Real captures from real hardware are the
-  actual test, and haven't been run through this.
+- Ambiguity is resolved by the data, not guessed, and reported when it remains: sub-zero
+  anchors force `int8`, anchors spanning a low-byte rollover fix a counter's byte order.
+  A field whose high byte is always zero reads equally well as `uint8` or `uint16_le`;
+  the narrower one is chosen. Choose anchors that span the range.
+- Still easy mode: no encryption, no bit-packed fields, no multi-frame messages, 1-byte
+  checksums and CRC16 only (no CRC32/CRC8 yet), frames at most ~128 bytes for the no-sync
+  case, and a type byte in a constant-size stream must switch value often (interleaved
+  messages) to be told apart from a slowly drifting sensor.
+- Deterministic heuristics plus the knowledge base, no LLM. Only two frames of real
+  hardware (the Cressi write-up) have been run through this; real captures are the actual test.
 
 ## Stage 2 (planned, not yet built): LLM-assisted spec/connector authoring
 
