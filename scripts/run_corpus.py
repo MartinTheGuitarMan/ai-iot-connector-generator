@@ -91,7 +91,8 @@ def markdown(rows):
             w = {"crc8": 2, "crc16": 4, "crc32": 8}[a]
             what = f"{a.upper().replace('CRC', 'CRC-')} poly 0x{r['poly']:0{w}X}"
         elif a.startswith("ascii_hex"):
-            what = "sum over ASCII text, " + ("no +1" if a.endswith("invsum") else "negated")
+            what = ("CRC over ASCII text, hex-written" if "crc" in a
+                    else "sum over ASCII text, " + ("no +1" if a.endswith("invsum") else "negated"))
         else:
             what = {"sum8": "8-bit sum", "sum16": "16-bit sum", "negsum8": "negated 8-bit sum", "negsum16": "negated 16-bit sum",
                     "xor8": "XOR of bytes", "fletcher8": "Fletcher-8", "fletcher8_256": "Fletcher-8"}.get(a, a)

@@ -102,7 +102,7 @@ Every frame in the corpus comes from a datasheet, a forum thread or a public rep
 | Daly smart BMS | 14 | 8-bit sum: yes | high |
 | Davis Vantage console CRC | 1 | CRC-16 poly 0x1021: yes | low |
 | DNP3 link-layer headers | 12 | CRC-16 poly 0x3D65: yes | high |
-| DSMR 4.2 P1 smart-meter telegram | 1 | sum over ASCII text, negated: yes | low |
+| DSMR 4.2 P1 smart-meter telegram | 1 | CRC over ASCII text, hex-written: yes | low |
 | ROBOTIS Dynamixel Protocol 2.0 | 24 | CRC-16 poly 0x8005: yes | high |
 | JBD / Xiaoxiang smart BMS | 18 | negated 16-bit sum: yes | high |
 | MAVLink v1 HEARTBEAT | 1 | CRC-16 poly 0x1021 (seeded): yes | low |
