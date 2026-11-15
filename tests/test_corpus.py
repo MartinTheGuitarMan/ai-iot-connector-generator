@@ -322,3 +322,47 @@ def test_tolerant_pass_needs_enough_frames_and_a_clear_majority():
     one = [g[:-1] + b"\x00" if i == 2 else g for i, g in enumerate(good)]
     r = identify(one)
     assert r["partial"] and r["partial"]["outliers"] == [2]
+
+
+def test_mavlink_seeded_crc_real_heartbeat_single_frame():
+    from reverse.identify import identify
+    f = bytes.fromhex("fe094e0101000000000002035104031c7f")
+    r = identify([f])
+    assert r["seeded_confidence"] == "low"
+    hit = [s for s in r["seeded_crc16"] if s["poly"] == 0x1021 and s["start"] == 1]
+    assert hit and hit[0]["append"] == [50] and hit[0]["init"] == 0xFFFF and hit[0]["reflected"]
+    assert not any(m["algo"] == "crc16" for m in r["matches"])      # the plain search cannot see it
+
+
+def test_mavlink_seeded_crc_several_message_types_synthetic():
+    """SYNTHETIC frames (random payloads) with CRC_EXTRA values from the NI forum table: 0->50, 1->124, 2->137."""
+    import random
+    from reverse.identify import identify
+    from reverse.infer import _crc_generic
+    rnd = random.Random(7)
+    extra = {0: 50, 1: 124, 2: 137}
+    plen = {0: 9, 1: 31, 2: 12}
+    frames = []
+    for seq in range(9):
+        mid = seq % 3
+        body = bytes([plen[mid], seq, 1, 1, mid]) + bytes(rnd.randrange(256) for _ in range(plen[mid]))
+        crc = _crc_generic(body + bytes([extra[mid]]), 16, 0x1021, 0xFFFF, True, 0)
+        frames.append(b"\xfe" + body + crc.to_bytes(2, "little"))
+    r = identify(frames)
+    hit = [s for s in r["seeded_crc16"] if s["poly"] == 0x1021 and s["init"] == 0xFFFF and s["reflected"] and s["start"] == 1]
+    assert hit, r["seeded_crc16"]
+    h = hit[0]
+    assert h["append_by"] in (1, 5)                      # length byte and message id both separate the types
+    assert sorted(h["append"].values()) == [50, 124, 137] and h["groups"] == 3
+    assert r["seeded_confidence"] == "high"
+
+
+def test_seeded_group_needs_two_frames_per_message_type():
+    from reverse.identify import identify
+    from reverse.infer import _crc_generic
+    frames = []
+    for mid, ex in ((0, 50), (1, 124), (2, 137)):          # one frame per type: nothing to cross-check the byte on
+        body = bytes([4, mid, 1, 1, mid, 9, 8, 7, 6][:9])
+        crc = _crc_generic(body + bytes([ex]), 16, 0x1021, 0xFFFF, True, 0)
+        frames.append(b"\xfe" + body + crc.to_bytes(2, "little"))
+    assert not [s for s in identify(frames)["seeded_crc16"] if s["groups"] > 1]

@@ -1,0 +1,16 @@
+id: mavlink_v1_heartbeat
+name: 'MAVLink v1 HEARTBEAT: CRC-16/MCRF4XX over bytes 1.. plus a hidden CRC_EXTRA byte'
+source: https://hobbyrcs.blogspot.com/2013/04/mavlink-protocol-notes-packet-decoding.html ; https://forums.ni.com/t5/LabVIEW/Interfacing-Ardupilotmega-with-Labview-with-Mavlink-Protocol/td-p/1961063/page/2 (same frame in both); CRC_EXTRA 50 for message 0 is stated in the NI thread
+doc_rule: CRC-16/MCRF4XX (poly 1021, init FFFF, reflected, no final XOR), low byte first, over everything after the FE start byte plus one CRC_EXTRA byte that depends on the message id (50 for HEARTBEAT)
+note: 'Seeded CRC: the appended byte is not on the wire. The plain search finds nothing real (only chance CRC-8 hits); the seeded pass solves the byte from the frame. One frame only, so low confidence and one chance candidate also fits. Two other frames in the ardupilot forum thread are truncated and were left out.'
+frames:
+- fe 09 4e 01 01 00 00 00 00 00 02 03 51 04 03 1c 7f
+reference:
+  algo: crc16
+  poly: 4129
+  init: 65535
+  reflected: true
+  xorout: 0
+  start: 1
+  endian: little
+  append: 50

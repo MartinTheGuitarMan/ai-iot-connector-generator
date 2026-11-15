@@ -299,8 +299,8 @@ python scripts/run_corpus.py
 python -m reverse.cli identify --frames frames.txt     # one hex frame per line; ':7A8ED00B9' and '$..*hh' lines work too
 ```
 
-Currently 22 of 22 cases find the documented rule (Modbus RTU, DNP3, UBX, Tuya, Plantower, Daly, JBD, Sensirion
-SHDLC and I2C words, XBee, Winsen, Cressi, Victron VE.Direct HEX, wired M-Bus, 1-Wire DS18B20, WHOOP, PPP/HDLC, the Davis console CRC, Modbus ASCII);
+Currently 23 of 23 cases find the documented rule (Modbus RTU, DNP3, UBX, Tuya, Plantower, Daly, JBD, Sensirion
+SHDLC and I2C words, XBee, Winsen, Cressi, Victron VE.Direct HEX, wired M-Bus, 1-Wire DS18B20, WHOOP, PPP/HDLC, the Davis console CRC, Modbus ASCII, MAVLink);
 12 of them with high confidence. Checksum families: CRC-8/16/32 (poly, init, reflection, final XOR, byte order),
 Fletcher, 8/16-bit sums and negated sums, XOR. Byte-stuffed frames (HDLC/PPP 7E/7D, SLIP) are unstuffed first,
 but only when every frame starts and ends with the same flag byte (`reverse/stuffing.py`). Also covered: SeaTalk 1's low-nibble length rule
@@ -315,6 +315,11 @@ are not ground truth.
 When no rule fits every frame (a real capture has corrupted ones), `identify` falls back to the rule that fits at
 least 70% of at least 5 frames, names the outliers, caps confidence at medium and never learns from it. The
 Modbus ASCII case uses this: 11 of the 15 pymodbus test frames fit the spec LRC, the other four are odd fixtures.
+
+Seeded CRCs (MAVLink's CRC_EXTRA: a constant byte, different per message type, appended to the data before the CRC
+but never sent) are solved, not enumerated: `identify()['seeded_crc16']` lists the CRC-16 parameters and the solved byte,
+per message type when the frames can be grouped by a header byte and every group has at least two frames. One real
+HEARTBEAT frame gives the right rule plus a chance candidate, at low confidence.
 
 Be careful with the numbers: one or two frames cannot separate rules that agree by chance (the output says
 `confidence: low`), a constant solved from the data (Victron's 0x55) counts as a free parameter, and the Modbus case

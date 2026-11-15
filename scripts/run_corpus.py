@@ -43,9 +43,15 @@ def run():
         top_ok = bool(top) and [i for i, f in enumerate(frames) if not _check_ok(
             f, {k: v for k, v in top.items() if k != "trailer_len"}, top["trailer_len"])] == (
             r["partial"]["outliers"] if r.get("partial") else [])
-        in_list = any({k: v for k, v in m.items() if k != "trailer_len"} == rp and m["trailer_len"] == rt for m in r["matches"])
+        if ref_seed := c["reference"].get("append"):
+            # a seeded CRC: the rule lives in r["seeded_crc16"]; the documented byte must be among its solutions
+            want = {k: v for k, v in rp.items() if k in ("algo", "poly", "init", "reflected", "xorout", "start", "endian")}
+            in_seeded = any({k: s[k] for k in want} == want and ref_seed in s["append"] for s in r["seeded_crc16"])
+            ref_ok = True   # checked through the seeded solution, not the plain check
+            top, top_ok = r["seeded_crc16"][0] if r["seeded_crc16"] else None, in_seeded
+        in_list = c["reference"].get("append") is not None and in_seeded or any({k: v for k, v in m.items() if k != "trailer_len"} == rp and m["trailer_len"] == rt for m in r["matches"])
         rows.append(dict(id=c["id"], n=len(frames), conf=r["confidence"], cands=r["n_candidates_validating"],
-                         ref_valid=ref_ok, top=top and (top["algo"], top["start"], top["trailer_len"]),
+                         ref_valid=ref_ok, top=top and (top["algo"], top["start"], top.get("trailer_len", 0)),
                          top_validates=top_ok, reference_found=in_list, partial=r.get("partial")))
     return rows
 

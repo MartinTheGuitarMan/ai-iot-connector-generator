@@ -12,6 +12,7 @@ many independent frames back it. One frame validates an 8-bit rule by luck about
 from __future__ import annotations
 
 import collections
+import itertools
 import math
 
 from reverse.infer import _check_ok, _checksum_candidates
@@ -108,6 +109,11 @@ def identify(frames: list[bytes], kb: KnowledgeBase | None = None, max_results: 
                 hits.append((t, p))
             partial = {"validated": best, "of": len(frames),
                        "outliers": [i for i in range(len(frames)) if i not in found[0][2]]}
+    # Seeded CRC-16 (a hidden constant byte, MAVLink style). Only worth trying when the plain search found
+    # nothing, or so little evidence that its hits could be chance.
+    seeded = []
+    if (not hits or len(frames) < 3) and len(frames) >= 1:
+        seeded = find_seeded_crc16(frames, sync_len, kb)
     # simplest first: fewer trailer bytes, then plain families before CRC parameter soup
     order = {"sum8": 0, "negsum8": 1, "xor8": 2, "sum16": 3, "negsum16": 4,
              "fletcher8": 5, "fletcher8_256": 6, "crc8": 7, "crc16": 8, "crc32": 9}
@@ -136,8 +142,55 @@ def identify(frames: list[bytes], kb: KnowledgeBase | None = None, max_results: 
                 partial["validated"] if partial else len(frames) - (1 if solved else 0))),
         "constant_solved_from_data": solved,
         "partial": partial,
+        "seeded_crc16": seeded[:max_results],
+        "seeded_confidence": (lambda b: "high" if b >= 40 else "medium" if b >= 20 else "low")(
+            16 * len(frames) - 8 * max((s["groups"] for s in seeded), default=1)) if seeded else None,
         "stuffing": stuffing["scheme"] if stuffing else None,
     }
+
+
+def find_seeded_crc16(frames: list[bytes], sync_len: int, kb: KnowledgeBase) -> list[dict]:
+    """CRC-16 with a hidden constant byte appended to the data before the check (MAVLink's CRC_EXTRA).
+
+    The byte is not enumerated: for every CRC-16 parameter set it is solved per frame (one extra CRC step
+    for each of the 256 values) and has to agree across frames. If frames of several message types share
+    the check, they are grouped by one header byte and each group gets its own solved byte; a group only
+    counts when it holds at least two frames, otherwise the byte would be fitted to a single frame."""
+    from reverse.infer import _BUILTIN_POLYS, _crc_generic
+    min_len = min(len(f) for f in frames)
+    polys = list(dict.fromkeys(_BUILTIN_POLYS + kb.learned_polys()))
+    out = []
+    for start in range(0, min(sync_len + 3, min_len // 2)):
+        for poly, init, refl, xo, endian in itertools.product(polys, [0, 0xFFFF], [True, False], [0, 0xFFFF], ["little", "big"]):
+            per_frame = []
+            for f in frames:
+                end = len(f) - 2
+                if end <= start:
+                    break
+                stored = int.from_bytes(f[end:], endian)
+                state = _crc_generic(f[start:end], 16, poly, init, refl, 0)
+                per_frame.append({c for c in range(256)
+                                  if _crc_generic(bytes([c]), 16, poly, state, refl, xo) == stored})
+            else:
+                if not all(per_frame):
+                    continue
+                base = dict(algo="crc16", poly=poly, init=init, reflected=refl, xorout=xo, start=start, endian=endian)
+                common = set.intersection(*per_frame)
+                if common:
+                    out.append({**base, "append": sorted(common)[:4], "append_by": None, "groups": 1})
+                    continue
+                for g in range(0, min_len - 2):
+                    groups: dict[int, list[int]] = {}
+                    for i, f in enumerate(frames):
+                        groups.setdefault(f[g], []).append(i)
+                    if len(groups) < 2 or any(len(ix) < 2 for ix in groups.values()):
+                        continue
+                    solved = {k: set.intersection(*(per_frame[i] for i in ix)) for k, ix in groups.items()}
+                    if all(solved.values()):
+                        out.append({**base, "append": {f"{k:02x}": sorted(v)[0] for k, v in sorted(solved.items())},
+                                    "append_by": g, "groups": len(groups)})
+                        break
+    return out
 
 
 def detect_block_crc(frames: list[bytes], header_len: int, rule: dict, sizes=(8, 16, 32, 64, 128, 255)) -> int | None:
@@ -197,7 +250,7 @@ def learn_from_identification(kb: KnowledgeBase, result: dict, protocol: str) ->
     the same self-reinforcement trap the capture-based learning guards against."""
     if not result["matches"]:
         return "nothing to learn: no rule validated"
-    if result.get("partial"):
+    if result.get("partial") or result.get("seeded_crc16") and not result["matches"]:
         return "not recorded: no rule fit every frame, so this identification was not validated"
     ok = result["confidence"] == "high" or (result["confidence"] == "medium" and result["frames"] >= 3)
     if not ok or len(result["matches"]) != 1:
