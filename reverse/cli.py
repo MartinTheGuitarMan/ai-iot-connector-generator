@@ -76,6 +76,10 @@ def main(argv: list[str] | None = None) -> int:
               f"{res['n_candidates_validating']} rule(s) validate all of them")
         for m in res["matches"]:
             print("  ", m)
+        if res.get("partial"):
+            pa = res["partial"]
+            print(f"  note: no rule fits every frame; this one fits {pa['validated']} of {pa['of']}. "
+                  f"Frames that do not fit (0-based): {pa['outliers']}")
         if args.protocol:
             from reverse.identify import learn_from_identification
             print(learn_from_identification(kb, res, args.protocol))

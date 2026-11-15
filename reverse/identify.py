@@ -85,6 +85,29 @@ def identify(frames: list[bytes], kb: KnowledgeBase | None = None, max_results: 
                         p["endian"] = "big"
                     if all(_check_ok(f, p, trailer_len) for f in frames):
                         hits.append((trailer_len, p)); solved = True
+    # Tolerant pass: real captures hold corrupted frames. Only when nothing fits all of them, keep the
+    # rules that fit the most frames, if that is at least 70% and at least 4 frames. Confidence is capped
+    # at medium and the outliers are reported so a person can look at them.
+    partial = None
+    if not hits and len(frames) >= 5:
+        need = max(4, -(-7 * len(frames) // 10))
+        best, found = 0, []
+        for trailer_len in range(0, 3):
+            if trailer_len and len({f[-trailer_len:] for f in frames}) != 1:
+                continue
+            for p in _checksum_candidates(sync_len, max(0, min_len // 2), kb):
+                if CHECKSUM_ALGOS[p["algo"]] + p["start"] + trailer_len >= min_len:
+                    continue
+                good = [i for i, f in enumerate(frames) if _check_ok(f, p, trailer_len)]
+                if len(good) >= need and len(good) >= best:
+                    if len(good) > best:
+                        best, found = len(good), []
+                    found.append((trailer_len, p, good))
+        if found:
+            for t, p, good in found:
+                hits.append((t, p))
+            partial = {"validated": best, "of": len(frames),
+                       "outliers": [i for i in range(len(frames)) if i not in found[0][2]]}
     # simplest first: fewer trailer bytes, then plain families before CRC parameter soup
     order = {"sum8": 0, "negsum8": 1, "xor8": 2, "sum16": 3, "negsum16": 4,
              "fletcher8": 5, "fletcher8_256": 6, "crc8": 7, "crc16": 8, "crc32": 9}
@@ -100,14 +123,19 @@ def identify(frames: list[bytes], kb: KnowledgeBase | None = None, max_results: 
     if len(uniq) > 1:   # several rules fit: ones validated on other protocols first (stable, so no reshuffle otherwise)
         uniq.sort(key=lambda h: -kb.support({k: v for k, v in h[1].items()}))
     bits = 8 * (CHECKSUM_ALGOS[uniq[0][1]["algo"]] if uniq else 1)
+    if partial:
+        bits = min(bits, 8 * 2)
     return {
         "frames": len(frames),
         "sync": frames[0][:sync_len].hex(" ") if sync_len and len(frames) > 1 else "",
         "matches": [{"trailer_len": t, **p} for t, p in uniq[:max_results]],
         "n_candidates_validating": len(uniq),
         # chance that a random rule validates all frames ~ candidates_tried * 2^(-bits*frames)
-        "confidence": (lambda n: "high" if n * bits >= 40 else "medium" if n * bits >= 20 else "low")(len(frames) - (1 if solved else 0)),
+        "confidence": (lambda c: "medium" if partial and c == "high" else c)(
+            (lambda n: "high" if n * bits >= 40 else "medium" if n * bits >= 20 else "low")(
+                partial["validated"] if partial else len(frames) - (1 if solved else 0))),
         "constant_solved_from_data": solved,
+        "partial": partial,
         "stuffing": stuffing["scheme"] if stuffing else None,
     }
 
@@ -169,6 +197,8 @@ def learn_from_identification(kb: KnowledgeBase, result: dict, protocol: str) ->
     the same self-reinforcement trap the capture-based learning guards against."""
     if not result["matches"]:
         return "nothing to learn: no rule validated"
+    if result.get("partial"):
+        return "not recorded: no rule fit every frame, so this identification was not validated"
     ok = result["confidence"] == "high" or (result["confidence"] == "medium" and result["frames"] >= 3)
     if not ok or len(result["matches"]) != 1:
         return f"not recorded: confidence {result['confidence']}, {len(result['matches'])} candidate rule(s) on {result['frames']} frame(s)"

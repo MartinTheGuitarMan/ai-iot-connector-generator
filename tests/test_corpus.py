@@ -47,7 +47,8 @@ def test_short_capture_does_not_crash():
 def test_text_layers():
     from reverse.textlayer import classify, decode_hex_ascii, nmea_check
     assert decode_hex_ascii(":7A8ED00B9") == bytes.fromhex("07a8ed00b9")
-    assert decode_hex_ascii("7A8ED00B9") is None and decode_hex_ascii(":7A8ED00B") is None
+    assert decode_hex_ascii("7A8ED00B9") is None                       # no ':' no frame
+    assert decode_hex_ascii(":7A8ED00B") == bytes.fromhex("7A8ED00B")   # even digit count: Modbus ASCII pairs
     assert nmea_check("$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47")["ok"]
     assert not nmea_check("$GPGLL,4916.45,N,12311.12,W,225444,A,*00")["ok"]
     assert classify([":7A8ED00B9", ":7FF0F0040"]) == "hex_ascii"
@@ -292,3 +293,32 @@ def test_davis_vector_single_frame_is_low_confidence_but_candidate_present():
     assert r["confidence"] == "low"
     assert any(m["algo"] == "crc16" and m["poly"] == 0x1021 and m["init"] == 0 and not m["reflected"]
                and m["endian"] == "big" for m in r["matches"])
+
+
+def test_modbus_ascii_text_layer_and_tolerant_identification():
+    from reverse.textlayer import classify, decode_hex_ascii
+    from reverse.identify import identify, learn_from_identification
+    from reverse.knowledge import KnowledgeBase
+    lines = [":0003007C00027F", ":000304008D008EDE", ":0083027B", ":02840179", ":1103007C00026E",
+             ":110304008D008ECD", ":1183026A", ":F7031389000A60", ":FF03007C000280", ":FF0304008D008EDF",
+             ":FF83027C", ":010105040017DF", ":03080001F7"]               # last two: LRC without the address byte
+    assert classify(lines) == "hex_ascii"
+    assert decode_hex_ascii(":0003007C00027F") == bytes.fromhex("0003007C00027F")
+    assert decode_hex_ascii(":7A8ED00B9") == bytes.fromhex("07A8ED00B9")        # Victron shape still works
+    r = identify([decode_hex_ascii(l) for l in lines])
+    assert r["partial"] == {"validated": 11, "of": 13, "outliers": [11, 12]}
+    assert r["confidence"] == "medium"                                          # never high on a partial fit
+    assert r["matches"][0]["algo"] == "negsum8"
+    assert learn_from_identification(KnowledgeBase(), r, "x").startswith("not recorded")
+
+
+def test_tolerant_pass_needs_enough_frames_and_a_clear_majority():
+    from reverse.identify import identify
+    good = [bytes([0xAA, i, i + 1, (i + i + 1) & 0xFF]) for i in range(1, 9)]
+    # 3 of 8 broken: 5/8 is below 70%, so no partial answer is invented
+    broken = [g[:-1] + bytes([(g[-1] + 1) & 0xFF]) if i in (0, 3, 6) else g for i, g in enumerate(good)]
+    assert identify(broken)["partial"] is None
+    # 1 of 8 broken: 7/8 passes
+    one = [g[:-1] + b"\x00" if i == 2 else g for i, g in enumerate(good)]
+    r = identify(one)
+    assert r["partial"] and r["partial"]["outliers"] == [2]

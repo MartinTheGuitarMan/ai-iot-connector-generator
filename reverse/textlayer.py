@@ -3,6 +3,7 @@
 Two shapes cover a lot of marine and energy kit:
   * ':' + ASCII hex   (Victron VE.Direct HEX):  ':7A8ED00B9' -> bytes 07 A8 ED 00 B9
     The first character is a lone nibble (the command), the rest are byte pairs.
+  * ':' + ASCII hex pairs + CRLF (Modbus ASCII): ':0003007C00017F' -> 00 03 00 7C 00 01 7F
   * '$' or '!' ... '*HH' (NMEA 0183 and relatives): XOR of the characters between the
     start mark and '*', stored as two ASCII hex digits.
 """
@@ -17,9 +18,11 @@ _HEX = re.compile(r"^[0-9A-Fa-f]+$")
 def decode_hex_ascii(line: str) -> bytes | None:
     """':7A8ED00B9' -> bytes; None if the line is not this shape."""
     s = line.strip()
-    if len(s) < 4 or s[0] != ":" or not _HEX.match(s[1:]) or len(s) % 2 == 1:
+    if len(s) < 4 or s[0] != ":" or not _HEX.match(s[1:]):
         return None
-    return bytes([int(s[1], 16)]) + bytes.fromhex(s[2:])
+    if len(s) % 2 == 0:                      # odd digit count: Victron, first digit is a lone nibble
+        return bytes([int(s[1], 16)]) + bytes.fromhex(s[2:])
+    return bytes.fromhex(s[1:])              # even digit count: Modbus ASCII, plain byte pairs
 
 
 def nmea_check(line: str) -> dict | None:
