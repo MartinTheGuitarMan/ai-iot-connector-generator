@@ -33,3 +33,5 @@ Branch `framed-binary-reverse`, head at the time of writing: see `git log`. Repo
 ## Environment notes
 - Chat sandbox had no pip/npm and allowlisted network; GitHub clones need the repo attached. In Code on the Mac none of that applies.
 - Clones used by some tests (`libmbus`, `n2k`) are fetched by the tests and skipped when absent.
+
+Hunting protocols: read [HUNTING.md](HUNTING.md) first (how the hunt works, the rules, and why).
