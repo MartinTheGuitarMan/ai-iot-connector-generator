@@ -27,7 +27,8 @@ Branch `framed-binary-reverse`, head at the time of writing: see `git log`. Repo
 4. Length-field search for 4-byte fields (Teltonika); Dynamixel insertion stuffing.
 5. Codegen for the new features (stuffed, seeded, nested, text-wrapped, per-block, CAN, header, ASCII-hex, padded checks): `generator/spec.py`, `generator/codegen.py`.
 6. Real vessel captures (Simrad, Kongsberg, TSS1) when available; this is the "wall" condition.
-7. Deferred on purpose: the review step of the "universal translator" (LLM proposes meaning from docs, a domain expert signs off before any connector is trusted).
+7. Roadmap, not now: protocol knowledge graph. Add optional `family`, `variant_of`, `contradicts` fields to corpus cases, export to a graph (NetworkX) once there are 50-100 cases across families. Gives priors for tiny captures (family inheritance) and records manual-vs-frame disagreements as data. Rule: an edge counts only if a real frame validates it, with the source attached.
+8. Deferred on purpose: the review step of the "universal translator" (LLM proposes meaning from docs, a domain expert signs off before any connector is trusted).
 
 ## Environment notes
 - Chat sandbox had no pip/npm and allowlisted network; GitHub clones need the repo attached. In Code on the Mac none of that applies.
