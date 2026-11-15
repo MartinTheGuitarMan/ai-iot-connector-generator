@@ -1,0 +1,10 @@
+id: victron_vedirect_text
+name: Victron VE.Direct text-mode block (BMV-700, one 112-byte block)
+source: https://www.victronenergy.com/live/vedirect_protocol:faq (Q8, raw data dump)
+doc_rule: 'Sum of every byte of the block, from the first CR through the checksum byte, modulo 256, must be 0 (verified by computing: the 112 bytes sum to 0).'
+note: 'One frame, so low confidence; the tool also lists CRC-8 chance matches. The checksum byte (d8) is not printable, which is why the block is stored as hex.'
+frames:
+- 0d 0a 50 49 44 09 30 78 32 30 33 0d 0a 56 09 32 36 32 30 31 0d 0a 49 09 30 0d 0a 50 09 30 0d 0a 43 45 09 30 0d 0a 53 4f 43 09 31 30 30 30 0d 0a 54 54 47 09 2d 31 0d 0a 41 6c 61 72 6d 09 4f 46 46 0d 0a 52 65 6c 61 79 09 4f 46 46 0d 0a 41 52 09 30 0d 0a 42 4d 56 09 37 30 30 0d 0a 46 57 09 30 33 30 37 0d 0a 43 68 65 63 6b 73 75 6d 09 d8
+reference:
+  algo: negsum8
+  start: 0

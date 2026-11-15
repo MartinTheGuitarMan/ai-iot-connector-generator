@@ -404,3 +404,19 @@ def test_nested_crc_and_poly_sweep_synthetic():
     r = identify(frames)
     assert r["matches"][0]["poly"] == 0xD5
     assert r["nested"] and r["nested"]["matches"][0]["poly"] == 0xBA and r["nested"]["poly_sweep"]
+
+
+def test_bacnet_header_crc_found_mid_frame():
+    from reverse.identify import identify
+    full = bytes.fromhex("55ff051000000 6e8010301040101e399".replace(" ", ""))
+    hdr = bytes.fromhex("55ff067f02001d90")
+    r = identify([full, hdr])
+    assert r["matches"] == []                       # nothing at the end of the frames
+    h = r["header_checks"][0]
+    assert (h["algo"], h["poly"], h["init"], h["reflected"], h["xorout"], h["start"], h["header_len"]) == ("crc8", 0x81, 0xFF, True, 0xFF, 2, 8)
+    assert h["confidence"] == "low"                 # 2 frames cannot earn more
+
+
+def test_header_checks_need_two_frames():
+    from reverse.identify import identify
+    assert identify([bytes.fromhex("55ff051000000 6e8010301040101e399".replace(" ", ""))])["header_checks"] == []

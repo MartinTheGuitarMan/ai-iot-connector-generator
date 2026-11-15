@@ -1,0 +1,16 @@
+id: bacnet_mstp
+name: BACnet MS/TP frames (building automation; header CRC-8 sits mid-frame)
+source: https://graysonbellamy.github.io/watlowlib/protocol-stdbus/ (captured Watlow read frame 55 FF 05 10 00 00 06 E8 01 03 01 04 01 01 E3 99); https://docs.rs/crate/bacnet_parse/latest/source/src/mstp.rs (header_crc_test frame 55 ff 06 7f 02 00 1d 90)
+doc_rule: 'Header CRC-8 over frame type, DA, SA, length (bytes 2-6): poly x^8+x^7+1 (0x81), init FF, reflected, output complemented. Data CRC-16 (poly 1021, init FFFF, reflected, complemented, little-endian) over the payload. Both checked by computing: header gives E8 and 90, data gives E399.'
+note: 'Two real frames, header only in the second. The check is not at the end of the frame, so the trailing search finds nothing for the pair; the header-check pass finds the CRC-8 at low confidence (2 frames x 8 bits less the prefix lengths tried).'
+frames:
+- 55 ff 05 10 00 00 06 e8 01 03 01 04 01 01 e3 99
+- 55 ff 06 7f 02 00 1d 90
+reference:
+  algo: crc8
+  poly: 129
+  init: 255
+  reflected: true
+  xorout: 255
+  start: 2
+  header_len: 8

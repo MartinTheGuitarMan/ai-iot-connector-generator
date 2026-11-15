@@ -50,6 +50,13 @@ def run():
             ref_ok = True   # checked through the seeded solution, not the plain check
             top, top_ok = r["seeded_crc16"][0] if r["seeded_crc16"] else None, in_seeded
         in_list = c["reference"].get("append") is not None and in_seeded or any({k: v for k, v in m.items() if k != "trailer_len"} == rp and m["trailer_len"] == rt for m in r["matches"])
+        if hl := c["reference"].get("header_len"):
+            # a mid-frame check: the rule is judged on the prefix of that length, found via r["header_checks"]
+            want = {k: v for k, v in rp.items() if k in ("algo", "poly", "init", "reflected", "xorout", "start")}
+            ref_ok = all(_check_ok(f[:hl], rp, 0) for f in frames)
+            hit = [h for h in r["header_checks"] if {k: h[k] for k in want} == want and h["header_len"] == hl]
+            top, top_ok, in_list = (hit[0] if hit else None), bool(hit), bool(hit)
+            r = {**r, "confidence": hit[0]["confidence"] if hit else r["confidence"]}
         rows.append(dict(id=c["id"], n=len(frames), conf=r["confidence"], cands=r["n_candidates_validating"],
                          ref_valid=ref_ok, top=top and (top["algo"], top["start"], top.get("trailer_len", 0)),
                          top_validates=top_ok, reference_found=in_list, partial=r.get("partial")))

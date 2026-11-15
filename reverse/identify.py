@@ -146,6 +146,10 @@ def identify(frames: list[bytes], kb: KnowledgeBase | None = None, max_results: 
         if inner["matches"] and not inner.get("seeded_crc16"):
             nested = {"matches": inner["matches"], "confidence": inner["confidence"],
                       "frames": inner["frames"], "poly_sweep": inner["poly_sweep"]}
+    # Mid-frame header checks, only if the end of the frame did not give a solid answer.
+    header_checks = []
+    if _depth == 0 and not (uniq and len(frames) >= 3 and not partial):
+        header_checks = find_header_checks(frames, sync_len, kb)
     bits = 8 * (CHECKSUM_ALGOS[uniq[0][1]["algo"]] if uniq else 1)
     if partial:
         bits = min(bits, 8 * 2)
@@ -163,6 +167,7 @@ def identify(frames: list[bytes], kb: KnowledgeBase | None = None, max_results: 
         "partial": partial,
         "nested": nested,
         "poly_sweep": swept,
+        "header_checks": header_checks,
         "seeded_crc16": seeded[:max_results],
         "seeded_confidence": (lambda b: "high" if b >= 40 else "medium" if b >= 20 else "low")(
             16 * len(frames) - 8 * max((s["groups"] for s in seeded), default=1)) if seeded else None,
@@ -212,6 +217,32 @@ def find_seeded_crc16(frames: list[bytes], sync_len: int, kb: KnowledgeBase) -> 
                                     "append_by": g, "groups": len(groups)})
                         break
     return out
+
+
+def find_header_checks(frames: list[bytes], sync_len: int, kb: KnowledgeBase, max_len: int = 14) -> list[dict]:
+    """A check that sits mid-frame, after a fixed-size header and before the payload (BACnet MS/TP: header CRC-8,
+    DNP3 link header CRC). Each prefix length L is searched as if the first L bytes were a frame of their own
+    with a trailing check. The many prefix lengths tried are paid for in the confidence: bits = frames x check
+    bits minus log2(tries)."""
+    out = []
+    min_len = min(len(f) for f in frames)
+    if len(frames) < 2:
+        return out
+    tries = 0
+    for L in range(3, min(max_len, min_len) + 1):
+        sub = [f[:L] for f in frames]
+        for p in _checksum_candidates(sync_len, max(0, L // 2), kb):
+            size = CHECKSUM_ALGOS[p["algo"]]
+            if size + p["start"] >= L:
+                continue
+            tries += 1
+            if all(_check_ok(f, p, 0) for f in sub):
+                out.append({**p, "check_offset": L - size, "header_len": L})
+    for h in out:
+        bits = len(frames) * 8 * CHECKSUM_ALGOS[h["algo"]] - math.log2(max(tries, 2))
+        h["confidence"] = "high" if bits >= 40 else "medium" if bits >= 20 else "low"
+    out.sort(key=lambda h: ({"high": 0, "medium": 1, "low": 2}[h["confidence"]], h["header_len"]))
+    return out[:8]
 
 
 def detect_block_crc(frames: list[bytes], header_len: int, rule: dict, sizes=(8, 16, 32, 64, 128, 255)) -> int | None:
