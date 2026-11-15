@@ -1,0 +1,19 @@
+# Copy to corpus/cases/<short_name>.yaml. Real frames only, with the source.
+id: short_name
+name: Device or protocol, one line
+source: URL where the frames are published (and where the rule is documented)
+doc_rule: 'The rule as the vendor documents it. Say how you checked it (by computing the checksum yourself).'
+note: 'What the tool is expected to find, at what confidence, and anything odd (typos in the manual, outlier frames).'
+frames:          # one hex frame per line, spaces allowed; ':...' hex-text and NMEA '$..*hh' lines also work
+- 7e 00 01 02 03 aa bb
+reference:
+  algo: crc16    # crc8, crc16, crc32, fletcher8, fletcher8_256, sum8, sum16, negsum8, negsum16, xor8
+  poly: 4129     # decimal; crc only
+  init: 65535
+  reflected: false
+  xorout: 0
+  endian: big    # crc16/crc32 only
+  start: 1       # first byte covered by the check
+  # trailer: 1   # bytes after the check, if any
+  # Special shapes: stuffing: hdlc | slip, expected_outliers: [..], header_len: N (check mid-frame),
+  # padded: true (check zero-extended in a wider field), algo: ascii_hex_negsum | ascii_hex_invsum (+ width_chars).

@@ -11,6 +11,10 @@ for some stations, Modbus register map) differs, and unifying them into
 one schema is still mostly hand-coded, per-integration work — which is
 exactly the kind of fragmentation this generator is meant to paper over.
 
+**Contributing:** the easiest way to help is to add a real protocol to the corpus: a few real frames, a source link and the
+rule the vendor documents, in one YAML file. See [CONTRIBUTING.md](CONTRIBUTING.md). The tool's weak spots are listed under
+"Known failures" below; a case it gets wrong is worth more than one it gets right.
+
 ## Stage 1 (this commit): template-based connector generator
 
 Rather than hand-writing (or LLM-writing) each protocol connector directly,

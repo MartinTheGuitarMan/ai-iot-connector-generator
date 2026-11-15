@@ -1,6 +1,6 @@
 # Handoff: reverse/ (capture to spec), for Claude Code
 
-Branch `framed-binary-reverse`, head at the time of writing: see `git log`. Repo: MartinTheGuitarMan/ai-iot-connector-generator. Private side project, kept separate from employer work.
+Branch `framed-binary-reverse`, head at the time of writing: see `git log`. Repo: MartinTheGuitarMan/ai-iot-connector-generator.
 
 ## State
 - Corpus: 30 of 30 real-frame cases find the documented rule (`python scripts/run_corpus.py`), 13 at high confidence.
