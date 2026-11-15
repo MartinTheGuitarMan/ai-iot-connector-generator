@@ -301,7 +301,7 @@ python -m reverse.cli identify --frames frames.txt     # one hex frame per line;
 
 Currently 30 of 30 cases find the documented rule (Modbus RTU, DNP3, UBX, Tuya, Plantower, Daly, JBD, Sensirion
 SHDLC and I2C words, XBee, Winsen, Cressi, Victron VE.Direct HEX, wired M-Bus, 1-Wire DS18B20, WHOOP, PPP/HDLC, the Davis console CRC, Modbus ASCII, MAVLink, Dynamixel 2.0, CRSF, BACnet MS/TP, VE.Direct text, Seplos and PACE YD/T 1363 style, Teltonika Codec 8);
-12 of them with high confidence. Checksum families: CRC-8/16/32 (poly, init, reflection, final XOR, byte order),
+13 of them with high confidence. Checksum families: CRC-8/16/32 (poly, init, reflection, final XOR, byte order),
 Fletcher, 8/16-bit sums and negated sums, XOR. Byte-stuffed frames (HDLC/PPP 7E/7D, SLIP) are unstuffed first,
 but only when every frame starts and ends with the same flag byte (`reverse/stuffing.py`). Also covered: SeaTalk 1's low-nibble length rule
 (no checksum), NMEA 2000 fast-packet detection on a real vessel capture (`reverse/canlog.py`), a blind locator for
@@ -345,8 +345,32 @@ was filtered with the known CRC, so it shows agreement rather than blind discove
 `n2k`) are cloned by the tests that use them and skipped when absent. libmbus telegrams embedded here are
 BSD-3-Clause, Copyright (c) 2010-2012 Raditex Control AB.
 
-Not yet: code generation for text-wrapped frames, byte-stuffed frames, per-block CRCs and CAN; the locator finds candidates but does
-not yet choose between them from a single frame.
+### Known failures (the corpus is not a victory lap)
+
+- CRSF: the inner CRC-8 (poly 0xBA) is not found from one frame; the poly sweep needs at least 3.
+- Dynamixel 2.0: the insertion-style byte stuffing is not handled (the 24 corpus packets contain none).
+- Davis: only a short frame is in the corpus; the full LOOP packet is missing.
+- BACnet MS/TP: the payload CRC-16 after a variable-length payload is not located, only the header CRC-8.
+- Teltonika: the 4-byte data length field is not found (length search covers 1-2 byte fields).
+- One or two tiny frames always give chance candidates; the tool says `low` and lists them.
+- Published parameters can be wrong (WHOOP, the Seplos manual's prose): the frame wins over the page.
+- Unknown 16/32-bit polynomials cannot be recovered; only an 8-bit polynomial sweep exists.
+- No real vessel captures yet (Simrad, Kongsberg, TSS1) and no hardware in the loop.
+
+### What identify() returns, beyond `matches`
+
+`partial` (tolerant pass, outliers named), `seeded_crc16`, `nested`, `poly_sweep`, `header_checks` (mid-frame),
+`ascii_hex_checks` (hex-text checksums over ASCII), `padded_check` (zero-extended field), `stuffing`, `confidence`.
+Each pass runs only when the earlier ones leave the answer open, and each prices its own extra tries into `confidence`.
+
+Not yet: code generation for text-wrapped frames, byte-stuffed frames, seeded and nested CRCs, header, ASCII-hex and padded
+checks, per-block CRCs and CAN; the locator finds candidates but does not yet choose between them from a single frame.
+
+### Where this is going
+
+The tool infers the grammar of a legacy protocol; it does not know what the fields mean. The intended handoff is a
+"universal translator": an LLM proposes meanings from whatever documentation exists, and a domain expert signs off
+before anything is trusted. That review step is deliberately not built yet.
 
 ## Stage 2 (planned, not yet built): LLM-assisted spec/connector authoring
 
