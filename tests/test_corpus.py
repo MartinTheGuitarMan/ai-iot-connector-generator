@@ -282,3 +282,13 @@ def test_slip_unstuffing():
     assert d["scheme"] == "slip"
     assert unstuff(frames, d) == [b"\x01\xc0\x02", b"\xdb\x05"]
     assert detect([b"\xc0\x01\xdb\x02\xc0"]) is None                                 # bad escape pair
+
+
+def test_davis_vector_single_frame_is_low_confidence_but_candidate_present():
+    from reverse.identify import identify
+    from reverse.infer import checksum
+    assert checksum(bytes.fromhex("c6cea203"), "crc16", 0x1021, 0, False, 0) == 0xE2B4
+    r = identify([bytes.fromhex("c6cea203e2b4")])
+    assert r["confidence"] == "low"
+    assert any(m["algo"] == "crc16" and m["poly"] == 0x1021 and m["init"] == 0 and not m["reflected"]
+               and m["endian"] == "big" for m in r["matches"])

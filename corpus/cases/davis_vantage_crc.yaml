@@ -1,0 +1,15 @@
+id: davis_vantage_crc
+name: 'Davis Vantage console CRC (LOOP, GETTIME, DMPAFT): CRC-16/XMODEM, big-endian'
+source: https://github.com/alexwitherspoon/aviationwx-bridge/pull/175 (quotes the documented Davis test vector crc16([C6 CE A2 03]) == 0xE2B4)
+doc_rule: CRC-CCITT poly 1021, init 0, no reflection, no final XOR, sent high byte first; a valid 99-byte LOOP packet has CRC residue 0
+note: 'One 6-byte frame only, so confidence is low and two spurious rules also fit (xor8, crc8): with one frame the tool cannot separate them. No complete real LOOP packet was found, so the 99-byte case is untested.'
+frames:
+- c6 ce a2 03 e2 b4
+reference:
+  algo: crc16
+  poly: 4129
+  init: 0
+  reflected: false
+  xorout: 0
+  start: 0
+  endian: big
