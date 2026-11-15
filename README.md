@@ -193,7 +193,29 @@ Once it's up on your machine, the honest verification loop is: confirm
 Grafana and see the panels populate, and try the `curl` above against
 Node-RED and confirm the point shows up in Grafana too.
 
-## Stage 2 (planned, not yet built): LLM-assisted spec/connector authoring
+## Stage 2 (in progress): LLM-assisted spec/connector authoring
+
+Built so far: the inputs and the scoring harness. Not yet built: the LLM
+authoring loop itself.
+
+- `docs/protocols/` — raw vendor-style protocol docs (prose + tables) for
+  each of the three example protocols. These are what an LLM will be given.
+- `authoring/eval.py` — scores a candidate spec by behaviour: validate,
+  generate, run over the sample captures plus negative cases (bad checksum,
+  sibling message type, other talker id, S/W hemispheres, missing
+  registers), and diff the canonical output against the hand-written
+  reference connector.
+
+```
+python -m authoring.eval --references                 # references vs themselves
+python -m authoring.eval --protocol wxobs --spec my.yaml -v
+```
+
+Limitation: the reference connectors come from the same specs and sample
+data the harness scores against, so this measures agreement with the
+hand-written answer, not correctness against real hardware.
+
+### Stage 2 plan: LLM-assisted spec/connector authoring
 
 Have an LLM draft the declarative spec (or the connector directly) from raw,
 unstructured protocol documentation — a sensor's ASCII sentence table, a
