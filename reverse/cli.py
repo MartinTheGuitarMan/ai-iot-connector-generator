@@ -71,20 +71,14 @@ def main(argv: list[str] | None = None) -> int:
             frames = [decode_hex_ascii(l) for l in lines]
         else:
             frames = [bytes.fromhex(l.replace(" ", "")) for l in lines]
+        from reverse.report import format_report, found_anything
         res = identify(frames, kb)
-        print(f"{res['frames']} frame(s), confidence {res['confidence']}, "
-              f"{res['n_candidates_validating']} rule(s) validate all of them")
-        for m in res["matches"]:
-            print("  ", m)
-        if res.get("partial"):
-            pa = res["partial"]
-            print(f"  note: no rule fits every frame; this one fits {pa['validated']} of {pa['of']}. "
-                  f"Frames that do not fit (0-based): {pa['outliers']}")
+        print("\n".join(format_report(res)))
         if args.protocol:
             from reverse.identify import learn_from_identification
             print(learn_from_identification(kb, res, args.protocol))
             kb.save()
-        return 0 if res["matches"] else 1
+        return 0 if found_anything(res) else 1
 
     if args.command == "knowledge":
         print(f"{args.knowledge}: {kb.summary()}")

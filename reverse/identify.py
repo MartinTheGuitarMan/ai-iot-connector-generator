@@ -233,6 +233,8 @@ def find_header_checks(frames: list[bytes], sync_len: int, kb: KnowledgeBase, ma
     tries = 0
     for L in range(3, min(max_len, min_len) + 1):
         sub = [f[:L] for f in frames]
+        if len(set(sub)) == 1:      # identical prefixes carry no evidence: any check over constant data 'validates'
+            continue
         for p in _checksum_candidates(sync_len, max(0, L // 2), kb):
             size = CHECKSUM_ALGOS[p["algo"]]
             if size + p["start"] >= L:

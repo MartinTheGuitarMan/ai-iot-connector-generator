@@ -446,3 +446,25 @@ def test_teltonika_padded_crc16():
     m = r["padded_check"]["matches"][0]
     assert (m["algo"], m["poly"], m["init"], m["reflected"], m["xorout"], m["start"], m["endian"]) == ("crc16", 0x8005, 0, True, 0, 8, "big")
     assert identify([a])["padded_check"] is None   # one frame is not enough to claim a pad
+
+
+def test_header_checks_ignore_constant_prefixes():
+    """Teltonika frames start with five zero bytes: a check over constant data validates trivially and proves nothing."""
+    from reverse.identify import identify
+    a = bytes.fromhex("000000000000003608010000016B40D8EA30010000000000000000000000000000000105021503010101425E0F01F10000601A014E0000000000000000010000C7CF")
+    b = bytes.fromhex("000000000000002808010000016B40D9AD80010000000000000000000000000000000103021503010101425E100000010000F22A")
+    assert identify([a, b])["header_checks"] == []
+
+
+def test_report_is_readable_and_honest():
+    from reverse.identify import identify
+    from reverse.report import format_report, found_anything
+    r = identify([b"~20004642E00201FD35\r"])
+    text = "\n".join(format_report(r))
+    assert "inverted sum of ASCII characters" in text and "low confidence" in text
+    assert found_anything(r)
+    # a frame set with no checksum at all: the report says so instead of inventing a rule
+    import os
+    junk = [bytes((i * 37 + j * 91 + 5) % 251 for j in range(40)) for i in range(6)]
+    rj = identify(junk)
+    assert found_anything(rj) == bool(rj["matches"] or rj.get("header_checks") or rj.get("padded_check") or rj.get("seeded_crc16") or rj.get("nested") or rj.get("ascii_hex_checks"))

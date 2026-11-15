@@ -80,8 +80,32 @@ def run():
                          top_validates=top_ok, reference_found=in_list, partial=r.get("partial")))
     return rows
 
+def markdown(rows):
+    """The table in the README. Regenerate with: python scripts/run_corpus.py --markdown"""
+    out = ["| Protocol | Frames | Check found blind | Confidence |", "|---|---:|---|---|"]
+    for x in rows:
+        c = yaml.safe_load(open(ROOT / f"corpus/cases/{x['id']}.yaml"))
+        r = c["reference"]
+        a = r["algo"]
+        if a.startswith("crc"):
+            w = {"crc8": 2, "crc16": 4, "crc32": 8}[a]
+            what = f"{a.upper().replace('CRC', 'CRC-')} poly 0x{r['poly']:0{w}X}"
+        elif a.startswith("ascii_hex"):
+            what = "sum over ASCII text, " + ("no +1" if a.endswith("invsum") else "negated")
+        else:
+            what = {"sum8": "8-bit sum", "sum16": "16-bit sum", "negsum8": "negated 8-bit sum", "negsum16": "negated 16-bit sum",
+                    "xor8": "XOR of bytes", "fletcher8": "Fletcher-8", "fletcher8_256": "Fletcher-8"}.get(a, a)
+        extra = " (mid-frame)" if r.get("header_len") else " (zero-padded field)" if r.get("padded") else " (seeded)" if r.get("append") is not None else ""
+        found = "yes" if x["reference_found"] else "**no**"
+        out.append(f"| {c['name'].split(' (')[0].split(':')[0].split(' mined')[0]} | {x['n']} | {what}{extra}: {found} | {x['conf']} |")
+    return "\n".join(out)
+
+
 if __name__ == "__main__":
     rows = run()
+    if "--markdown" in sys.argv:
+        print(markdown(rows))
+        raise SystemExit(0)
     for x in rows:
         print(f'{x["id"]:24s} n={x["n"]:2d} conf={x["conf"]:6s} cands={x["cands"]:2d} top={x["top"]} reference_found={x["reference_found"]}'
               + (f' PARTIAL {x["partial"]["validated"]}/{x["partial"]["of"]}' if x["partial"] else ""))

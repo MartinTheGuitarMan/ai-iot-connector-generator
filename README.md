@@ -1,216 +1,154 @@
-# ai-iot-connector-generator
+# iot-rosetta
 
-Experiment: can an LLM be used to build Python connectors for IoT device
-protocols that translate into a canonical IoT structure?
+**Infer the grammar of legacy IoT protocols from captured frames.** Not quite the universal translator, but working on it.
 
-The example domain is multi-vendor weather station telemetry, picked
-deliberately: unlike something like Modbus-over-industrial-PLC, where the
-transport is already a mature, decades-solved problem, weather sensor
-hardware has no real standard. Every vendor's ASCII sentence dialect (or,
-for some stations, Modbus register map) differs, and unifying them into
-one schema is still mostly hand-coded, per-integration work — which is
-exactly the kind of fragmentation this generator is meant to paper over.
+![license](https://img.shields.io/badge/license-MIT-blue) ![python](https://img.shields.io/badge/python-3-blue) ![corpus](https://img.shields.io/badge/real%20protocols%20tested-30-brightgreen)
 
-**Contributing:** the easiest way to help is to add a real protocol to the corpus: a few real frames, a source link and the
-rule the vendor documents, in one YAML file. See [CONTRIBUTING.md](CONTRIBUTING.md). The tool's weak spots are listed under
-"Known failures" below; a case it gets wrong is worth more than one it gets right.
+[See it work](#see-it-work) · [How it works](#how-it-works) · [30 real protocols](#tested-on-30-real-protocols) · [Known failures](#known-failures-the-corpus-is-not-a-victory-lap) · [Contribute](#contribute-a-protocol-in-ten-minutes) · [Where this is going](#where-this-is-going)
 
-## Stage 1 (this commit): template-based connector generator
+## The problem
 
-Rather than hand-writing (or LLM-writing) each protocol connector directly,
-this stage builds the **generator** first: a small deterministic tool that
-turns a declarative protocol spec (YAML) into a standalone Python connector
-module, so the connector-writing knowledge lives in the spec + codegen
-backend, not in one-off hand-written parsers.
+Most of the world's IoT hardware speaks a protocol nobody wrote down: a battery on a serial line, a meter, a GPS tracker, a
+sensor from a supplier that no longer exists. There is no source code to decompile and the PDF, if there is one, is wrong in
+places. What you have is bytes on a wire.
 
-```
-canonical.py            canonical IoT reading shape every connector targets
-generator/spec.py       ProtocolSpec model (loads + validates YAML specs)
-generator/codegen.py    renders a ProtocolSpec into connector source
-generator/cli.py        `python -m generator.cli generate --spec ... --out ...`
-specs/                  example protocol specs
-connectors/             generated connector modules (checked in, regeneratable)
-scripts/                sample data generator
-sample_data/            synthetic telemetry capture (generated, checked in)
-pipeline/                CanonicalReading -> InfluxDB point mapping + runner
-nodered/                Node-RED flow: alternative ingest path, same canonical contract
-grafana/provisioning/   auto-provisioned InfluxDB datasource + dashboard
-docker-compose.yml      local InfluxDB + Grafana + Node-RED stack
-tests/                  generator, connector, pipeline, and sample-data tests
-```
+Working out the *grammar* of those bytes by hand (where a frame starts, how long it is, which checksum protects it, and with
+which polynomial) takes days of squinting at hex. iot-rosetta does that part: give it captured frames and it tells you the
+structure and the checksum rule, **with an honest confidence**, and can generate a connector from the result.
 
-Three transports are implemented. None is tied to any one protocol
-standard or vendor — they're general field-addressing strategies that
-cover most real device wire formats:
+It finds the grammar. It does not know what a field *means*; that is a job for documentation, an LLM and, above all, a person
+who knows the equipment. See [Where this is going](#where-this-is-going).
 
-- **delimited_text** — comma-delimited, field-index addressed (the kind
-  of ASCII sentence a lot of serial sensor hardware emits).
-  - `specs/weather_station_obs.yaml` → `connectors/weather_station_obs.py`:
-    parses `$..WXOBS` sentences (checksum-verified) into site position,
-    temperature, humidity, and pressure. Timestamp comes from an external
-    `reference_date` parameter, since the sentence carries only time-of-day
-    (`hms_time` field type).
-  - `specs/weather_station_obs_full.yaml` → `connectors/weather_station_obs_full.py`:
-    parses `$..WXOBSF` sentences into position and wind speed/direction.
-    Unlike the plain reading, this one carries its own `ddmmyy` date field
-    (`canonical.date_field` in the spec, `ddmmyy_date` field type), so its
-    timestamp is self-contained and its `parse()` takes no `reference_date`.
-    A 2-digit year is inherently ambiguous across centuries — the generator
-    resolves it to 2000-2099, documented (and tested) as a known limitation
-    of that date encoding, not a parsing bug.
-- **register_map** — address/scale addressed (Modbus-style). Example:
-  `specs/weather_station_modbus.yaml` → `connectors/weather_station_modbus.py`:
-  a *different vendor's* weather station, exposed over Modbus holding
-  registers instead of ASCII sentences (rainfall, wind gust, battery
-  voltage, UV index) — the same real-world fragmentation story, a second
-  wire format for the same category of device.
+## See it work
 
-- **framed_binary** — a byte stream of self-delimiting frames, fields addressed by
-  byte offset (`uint8`/`int16_le`/`uint32_be`/..., `scale`, `bias`). The shape of many
-  legacy serial/RS-485 device protocols. A frame is delimited by a length byte *or* a
-  constant `fixed_length`; may start with `sync` bytes (or have none, then the stream
-  re-synchronises on the check value); may have a message-type byte (or be
-  single-message); carries a check value (`crc16` with any polynomial/init/reflection,
-  `fletcher8`, `sum8`, `xor8`) and optionally constant `trailer` bytes after it.
-  Generated modules expose `iter_frames(stream)` (resyncs after noise, drops corrupt
-  frames) and `parse(frame, device_id, timestamp)`; the wire has no clock, so the caller
-  supplies the timestamp. `specs/cressi_nepto_identity.yaml` is a real device (a dive
-  computer) written from frames published in a reverse-engineering write-up, checked
-  in tests against those exact bytes. See "Reverse: capture → spec" below.
-
-Every generated connector's `parse(...)` returns a `canonical.CanonicalReading`
-(device_id, protocol, message_type, ISO 8601 timestamp, location, a list of
-named/unit-tagged measurements, and the original raw field values) —
-one shape regardless of source protocol or vendor.
-
-Regenerate a connector after editing its spec:
+Two real frames from BACnet MS/TP (a building-automation bus), copied from public sources, no documentation given to the tool:
 
 ```
+$ cat frames.txt
+55 ff 05 10 00 00 06 e8 01 03 01 04 01 01 e3 99
+55 ff 06 7f 02 00 1d 90
+
+$ python -m reverse.cli identify --frames frames.txt
+2 frame(s), confidence low
+  mid-frame check (low): CRC-8, poly 0x81, init 0xFF, reflected, final XOR 0xFF; covers bytes from offset 2 up to the check at offset 7 (mid-frame, header is 8 bytes)
+  low confidence: few frames, so rules that agree by chance cannot be ruled out. Add frames.
+```
+
+The checksum is not at the end of the frame, it protects a five-byte header, and the tool found it anyway. It says `low`
+because two frames cannot rule out a coincidence, and it tells you so. With six real packets from a WHOOP strap:
+
+```
+$ python -m reverse.cli identify --frames whoop_packets.txt
+6 frame(s), confidence high
+  rule: CRC-32, poly 0x04C11DB7, init 0xFFFFFFFF, reflected, final XOR 0xFFFFFFFF, little-endian; covers bytes from offset 4 to the check
+  1 rule(s) validate every frame
+```
+
+The page that documents that protocol gives CRC parameters that fail two of its own six packets. The tool's answer fits all six.
+**Published parameters are not ground truth. The frame is.**
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[captured frames] --> B[undo byte stuffing<br/>HDLC / SLIP]
+    B --> C[find the framing<br/>sync, length, trailer]
+    C --> D[search checksum families<br/>CRC-8/16/32, sums, Fletcher, XOR]
+    D --> E[rule + confidence<br/>chance matches priced in]
+    E --> F[protocol spec YAML]
+    F --> G[generated Python connector<br/>canonical IoT readings]
+    E -.-> H[LLM proposes meaning<br/>from the docs]
+    H -.-> I[domain expert<br/>signs off]
+    I -.-> F
+```
+
+Solid arrows work today. Dashed arrows are the planned review step, deliberately not built yet.
+
+- **Confidence is arithmetic, not vibes.** It is frames x check bits, minus what the search cost in chance matches. `high` needs
+  at least 40 bits, `medium` 20. One short frame is always `low`, and the output says so.
+- **Every pass prices its own tries.** Hunting more kinds of check raises the odds of a coincidence on a small capture, so each
+  extra pass (mid-frame checks, hidden constants, polynomial sweeps) subtracts what it cost.
+- **It only learns what was validated.** Rules found by tolerant or sweeping passes are never written to the knowledge base.
+- **Failures are written up, not hidden.** See [Known failures](#known-failures-the-corpus-is-not-a-victory-lap).
+
+## Tested on 30 real protocols
+
+Every frame in the corpus comes from a datasheet, a forum thread or a public repo, with its source link in
+[`corpus/cases/`](corpus/cases). The tool is given only the frames and has to find the documented rule itself.
+
+| Protocol | Frames | Check found blind | Confidence |
+|---|---:|---|---|
+| BACnet MS/TP frames | 2 | CRC-8 poly 0x81 (mid-frame): yes | low |
+| Cressi Nepto dive computer | 2 | CRC-16 poly 0x1021: yes | medium |
+| CRSF | 1 | CRC-8 poly 0xD5: yes | low |
+| Daly smart BMS | 14 | 8-bit sum: yes | high |
+| Davis Vantage console CRC | 1 | CRC-16 poly 0x1021: yes | low |
+| DNP3 link-layer headers | 12 | CRC-16 poly 0x3D65: yes | high |
+| ROBOTIS Dynamixel Protocol 2.0 | 24 | CRC-16 poly 0x8005: yes | high |
+| JBD / Xiaoxiang smart BMS | 18 | negated 16-bit sum: yes | high |
+| MAVLink v1 HEARTBEAT | 1 | CRC-16 poly 0x1021 (seeded): yes | low |
+| Wired M-Bus long frames | 10 | 8-bit sum: yes | high |
+| Modbus ASCII | 15 | negated 8-bit sum: yes | medium |
+| Modbus RTU frames | 14 | CRC-16 poly 0x8005: yes | high |
+| 1-Wire DS18B20 scratchpad reads | 5 | CRC-8 poly 0x31: yes | high |
+| 1-Wire 64-bit ROM codes | 2 | CRC-8 poly 0x31: yes | low |
+| PACE RS232 BMS | 1 | sum over ASCII text, negated: yes | low |
+| Plantower PMS3003/PMS5003 particulate sensor | 3 | 16-bit sum: yes | high |
+| Plantower PMS5003 host commands and passive-mode reply | 6 | 16-bit sum: yes | high |
+| PPP in HDLC-like framing | 2 | CRC-16 poly 0x1021: yes | medium |
+| Sensirion I2C data words | 9 | CRC-8 poly 0x31: yes | high |
+| Sensirion SHDLC | 3 | 8-bit sum: yes | medium |
+| Seplos BMS RS485 | 1 | sum over ASCII text, no +1: yes | low |
+| Teltonika Codec 8 AVL data packets | 2 | CRC-16 poly 0x8005 (zero-padded field): yes | medium |
+| Tuya Wi-Fi module <-> MCU serial protocol | 10 | 8-bit sum: yes | high |
+| u-blox UBX | 1 | Fletcher-8: yes | low |
+| u-blox UBX frames from pyubx2 tests | 3 | Fletcher-8: yes | high |
+| Victron VE.Direct HEX commands | 4 | negated 8-bit sum: yes | medium |
+| Victron VE.Direct text-mode block | 1 | negated 8-bit sum: yes | low |
+| WHOOP strap BLE packets | 6 | CRC-32 poly 0x04C11DB7: yes | high |
+| Winsen ZH06 / MH-Z19-style gas & dust sensors | 3 | negated 8-bit sum: yes | medium |
+| Digi XBee API frame | 1 | 8-bit sum: yes | low |
+
+*Regenerate with `python scripts/run_corpus.py --markdown`.* Read it with the caveats in the sections below in mind: one or two
+frames cannot separate rules that agree by chance, and the Modbus RTU frames were filtered with the known CRC, so that row shows
+agreement rather than blind discovery.
+
+## Quick start
+
+```
+git clone https://github.com/MartinTheGuitarMan/iot-rosetta
+cd iot-rosetta
 pip install -r requirements.txt
-python -m generator.cli generate --spec specs/weather_station_obs.yaml --out connectors/weather_station_obs.py
-python -m pytest -q
+
+python scripts/run_corpus.py                                  # score the tool against all 30 real cases
+python -m reverse.cli identify --frames frames.txt            # one hex frame per line
+PYTHONPATH=. python -m pytest -q                              # tests (two modules need influxdb_client)
 ```
 
-Generated modules are self-contained: they import only `canonical` and the
-stdlib, so they can be committed and shipped without depending on
-`generator/` or PyYAML at runtime.
+Frame files take one hex frame per line, spaces allowed. Lines starting with `:` (hex text, as Victron and Modbus ASCII use) and
+NMEA `$..*hh` sentences are recognised too.
 
-## Why generator-first
+## Contribute a protocol in ten minutes
 
-The generator is a deterministic backbone, testable independent of any LLM
-call: given a spec, the output is byte-for-byte reproducible (verified —
-regenerating a connector produces an identical file). That gives a stable
-target for the next stage to build against, and a way to tell "the LLM got
-the mapping wrong" apart from "the codegen is non-deterministic/buggy."
+The most useful contribution is a real protocol the tool gets wrong. A case is one YAML file: a few real frames, a source link
+and the rule the vendor documents. Copy [`corpus/CASE_TEMPLATE.yaml`](corpus/CASE_TEMPLATE.yaml), run
+`python scripts/run_corpus.py`, and see whether the tool agrees. If it does not, that is the best kind of pull request.
+Details in [CONTRIBUTING.md](CONTRIBUTING.md). If you have a Seplos or Pylontech battery, there is a specific open question in
+[`corpus/cases/seplos_pylon_command.yaml`](corpus/cases/seplos_pylon_command.yaml).
 
-## Sample data
+## Where this is going
 
-`scripts/generate_sample_data.py` generates a synthetic but plausible
-telemetry capture: one fixed weather station site emitting paired ASCII
-observation sentences, plus a second vendor's station at the same site
-reporting over Modbus. It's seeded (deterministic, reproducible) and writes:
+The long-term picture is a "universal translator" for IoT, in three roles:
 
-```
-sample_data/weather_obs_log.txt           60 sentences (30 WXOBS + 30 WXOBSF)
-sample_data/weather_station_modbus.jsonl  30 register snapshots
-```
+1. **The tool infers the grammar** from captured frames (this repository, today).
+2. **An LLM proposes what the fields mean** from whatever documentation exists.
+3. **A domain expert gates it.** Nothing becomes a connector until someone who has stood next to the equipment says yes.
 
-This is fixture data for exercising the pipeline end-to-end — it is
-generated *from* the connectors' own spec assumptions, so it proves the
-generator is internally consistent, not that real hardware matches those
-assumptions. See "What's actually verified" below.
+Step 3 is the point, not a formality: the tool is routinely right about a number and silent about whether it is volts or
+litres. An open, growing collection of verified cases is the part that can be shared today, and it is the
+[corpus](corpus/cases).
 
-## Pipeline: connectors → canonical → InfluxDB
-
-```
-pipeline/influx_sink.py    CanonicalReading -> influxdb_client.Point
-pipeline/run_pipeline.py   reads sample_data/, runs it through the
-                            connectors, writes points to InfluxDB
-```
-
-All readings share one InfluxDB measurement, `iot_reading`; protocol
-and message type are tags, not the measurement name, so a single query can
-span every protocol/vendor for a device.
-
-```
-# Print line-protocol output, no InfluxDB required:
-python -m pipeline.run_pipeline --dry-run
-
-# Write to a real InfluxDB (see the docker-compose stack below):
-INFLUX_TOKEN=devtoken-not-a-secret python -m pipeline.run_pipeline
-```
-
-## Local test environment: InfluxDB + Grafana + Node-RED
-
-```
-docker compose up -d
-```
-
-- **InfluxDB** (`localhost:8086`) — org `iot`, bucket `telemetry`,
-  admin token `devtoken-not-a-secret` (a local-dev placeholder baked into
-  `docker-compose.yml` and `grafana/provisioning/datasources/influxdb.yaml`
-  — not meant to be a real secret; change it if this ever runs anywhere
-  beyond your own machine).
-- **Grafana** (`localhost:3000`, anonymous viewer access enabled) —
-  auto-provisioned with the InfluxDB datasource and an "IoT Telemetry
-  Overview" dashboard (temperature, humidity, wind speed, rainfall from
-  the second vendor's Modbus station, latest observation).
-- **Node-RED** (`localhost:1880`) — an alternative ingest path to
-  `pipeline/run_pipeline.py`: `POST /ingest/reading` with a
-  `CanonicalReading.to_dict()`-shaped JSON body, and its one function node
-  converts it to InfluxDB line protocol and writes it, exactly like
-  `pipeline/influx_sink.py` does in Python. This demonstrates the canonical
-  schema working as a real cross-language contract, not just a Python-internal
-  convenience. Try it once the stack is up:
-
-  ```
-  curl -X POST http://localhost:1880/ingest/reading \
-    -H 'Content-Type: application/json' \
-    -d '{"device_id":"site-1","protocol":"wx_ascii","message_type":"WXOBS",
-         "timestamp":"2026-09-21T12:35:19Z",
-         "measurements":[{"name":"temperature_c","value":23.5,"unit":"celsius"}],
-         "location":{"lat":48.1173,"lon":11.5167}}'
-  ```
-
-Then load the sample data into InfluxDB and open Grafana:
-
-```
-INFLUX_TOKEN=devtoken-not-a-secret python -m pipeline.run_pipeline
-open http://localhost:3000   # dashboard: IoT Telemetry Overview
-```
-
-### What's actually verified, and what isn't
-
-This sandbox can run the Docker CLI and daemon, but its network policy
-blocks pulls from Docker Hub's image CDN (`production.cloudfront.docker.com`
-returns 403 from the proxy) — confirmed, not assumed. So none of this stack
-has been visually confirmed running end-to-end here. What *was* verified
-in this environment, without a live container:
-
-- `docker compose config` resolves the compose file cleanly (services,
-  volumes, `depends_on`, port mappings all structurally valid).
-- `grafana/provisioning/**/*.{yaml,json}` all parse as valid YAML/JSON —
-  the dashboard JSON was hand-authored, not exported from a running
-  Grafana, so treat it as a good-faith starting point rather than a
-  guaranteed-perfect import; it may need minor adjustment on first load.
-- The Node-RED flow's logic doesn't need Node-RED to check: the exact
-  `func` string is extracted straight out of `nodered/flows.json` and
-  executed under plain Node.js in `tests/test_nodered_flow.js`, asserting
-  it produces the same line protocol as `pipeline/influx_sink.py`'s Python
-  implementation for the same input, including the edge case (a reading
-  with nothing to write). Run it with `node tests/test_nodered_flow.js`.
-- The Python side of the pipeline (sample data → connectors → canonical →
-  `Point.to_line_protocol()`) is fully covered by `pytest` without a live
-  InfluxDB — `Point` serialization is pure and needs no network connection.
-
-The images are official multi-arch builds (`influxdb:2`, `grafana/grafana`,
-`nodered/node-red`) and should pull and run natively on Apple Silicon.
-Once it's up on your machine, the honest verification loop is: confirm
-`docker compose ps` shows all three healthy, run the pipeline, open
-Grafana and see the panels populate, and try the `curl` above against
-Node-RED and confirm the point shows up in Grafana too.
-
-## Reverse: capture → spec (framed_binary)
+## How it works, in detail: capture → spec
 
 Stage 2 below starts from *documentation*. This is the other starting point: no
 documentation at all, just a captured byte stream and a few readings a human noted
@@ -293,10 +231,11 @@ What this does and doesn't show:
 - Deterministic heuristics plus the knowledge base, no LLM. Only two frames of real
   hardware (the Cressi write-up) have been run through this; real captures are the actual test.
 
-## Tested against real published frames (corpus)
+## The corpus: real published frames
 
-`corpus/cases/*.yaml` holds real frames transcribed from datasheets, forum threads and public repos, each with its
-source and the rule the vendor documents. `scripts/run_corpus.py` identifies the rule blind and scores it:
+The table at the top lists every case. This section is the detail behind it. Each `corpus/cases/*.yaml` holds real frames
+transcribed from datasheets, forum threads and public repos, with the source and the rule the vendor documents.
+`scripts/run_corpus.py` identifies the rule blind and scores it:
 
 ```
 python scripts/run_corpus.py
@@ -370,13 +309,217 @@ Each pass runs only when the earlier ones leave the answer open, and each prices
 Not yet: code generation for text-wrapped frames, byte-stuffed frames, seeded and nested CRCs, header, ASCII-hex and padded
 checks, per-block CRCs and CAN; the locator finds candidates but does not yet choose between them from a single frame.
 
-### Where this is going
+---
 
-The tool infers the grammar of a legacy protocol; it does not know what the fields mean. The intended handoff is a
-"universal translator": an LLM proposes meanings from whatever documentation exists, and a domain expert signs off
-before anything is trusted. That review step is deliberately not built yet.
+## Background: the connector generator
 
-## Stage 2 (planned, not yet built): LLM-assisted spec/connector authoring
+Experiment: can an LLM be used to build Python connectors for IoT device
+protocols that translate into a canonical IoT structure?
+
+The example domain is multi-vendor weather station telemetry, picked
+deliberately: unlike something like Modbus-over-industrial-PLC, where the
+transport is already a mature, decades-solved problem, weather sensor
+hardware has no real standard. Every vendor's ASCII sentence dialect (or,
+for some stations, Modbus register map) differs, and unifying them into
+one schema is still mostly hand-coded, per-integration work — which is
+exactly the kind of fragmentation this generator is meant to paper over.
+
+### Stage 1: template-based connector generator
+
+Rather than hand-writing (or LLM-writing) each protocol connector directly,
+this stage builds the **generator** first: a small deterministic tool that
+turns a declarative protocol spec (YAML) into a standalone Python connector
+module, so the connector-writing knowledge lives in the spec + codegen
+backend, not in one-off hand-written parsers.
+
+```
+canonical.py            canonical IoT reading shape every connector targets
+generator/spec.py       ProtocolSpec model (loads + validates YAML specs)
+generator/codegen.py    renders a ProtocolSpec into connector source
+generator/cli.py        `python -m generator.cli generate --spec ... --out ...`
+specs/                  example protocol specs
+connectors/             generated connector modules (checked in, regeneratable)
+scripts/                sample data generator
+sample_data/            synthetic telemetry capture (generated, checked in)
+pipeline/                CanonicalReading -> InfluxDB point mapping + runner
+nodered/                Node-RED flow: alternative ingest path, same canonical contract
+grafana/provisioning/   auto-provisioned InfluxDB datasource + dashboard
+docker-compose.yml      local InfluxDB + Grafana + Node-RED stack
+tests/                  generator, connector, pipeline, and sample-data tests
+```
+
+Three transports are implemented. None is tied to any one protocol
+standard or vendor — they're general field-addressing strategies that
+cover most real device wire formats:
+
+- **delimited_text** — comma-delimited, field-index addressed (the kind
+  of ASCII sentence a lot of serial sensor hardware emits).
+  - `specs/weather_station_obs.yaml` → `connectors/weather_station_obs.py`:
+    parses `$..WXOBS` sentences (checksum-verified) into site position,
+    temperature, humidity, and pressure. Timestamp comes from an external
+    `reference_date` parameter, since the sentence carries only time-of-day
+    (`hms_time` field type).
+  - `specs/weather_station_obs_full.yaml` → `connectors/weather_station_obs_full.py`:
+    parses `$..WXOBSF` sentences into position and wind speed/direction.
+    Unlike the plain reading, this one carries its own `ddmmyy` date field
+    (`canonical.date_field` in the spec, `ddmmyy_date` field type), so its
+    timestamp is self-contained and its `parse()` takes no `reference_date`.
+    A 2-digit year is inherently ambiguous across centuries — the generator
+    resolves it to 2000-2099, documented (and tested) as a known limitation
+    of that date encoding, not a parsing bug.
+- **register_map** — address/scale addressed (Modbus-style). Example:
+  `specs/weather_station_modbus.yaml` → `connectors/weather_station_modbus.py`:
+  a *different vendor's* weather station, exposed over Modbus holding
+  registers instead of ASCII sentences (rainfall, wind gust, battery
+  voltage, UV index) — the same real-world fragmentation story, a second
+  wire format for the same category of device.
+
+- **framed_binary** — a byte stream of self-delimiting frames, fields addressed by
+  byte offset (`uint8`/`int16_le`/`uint32_be`/..., `scale`, `bias`). The shape of many
+  legacy serial/RS-485 device protocols. A frame is delimited by a length byte *or* a
+  constant `fixed_length`; may start with `sync` bytes (or have none, then the stream
+  re-synchronises on the check value); may have a message-type byte (or be
+  single-message); carries a check value (`crc16` with any polynomial/init/reflection,
+  `fletcher8`, `sum8`, `xor8`) and optionally constant `trailer` bytes after it.
+  Generated modules expose `iter_frames(stream)` (resyncs after noise, drops corrupt
+  frames) and `parse(frame, device_id, timestamp)`; the wire has no clock, so the caller
+  supplies the timestamp. `specs/cressi_nepto_identity.yaml` is a real device (a dive
+  computer) written from frames published in a reverse-engineering write-up, checked
+  in tests against those exact bytes. See "Reverse: capture → spec" below.
+
+Every generated connector's `parse(...)` returns a `canonical.CanonicalReading`
+(device_id, protocol, message_type, ISO 8601 timestamp, location, a list of
+named/unit-tagged measurements, and the original raw field values) —
+one shape regardless of source protocol or vendor.
+
+Regenerate a connector after editing its spec:
+
+```
+pip install -r requirements.txt
+python -m generator.cli generate --spec specs/weather_station_obs.yaml --out connectors/weather_station_obs.py
+python -m pytest -q
+```
+
+Generated modules are self-contained: they import only `canonical` and the
+stdlib, so they can be committed and shipped without depending on
+`generator/` or PyYAML at runtime.
+
+### Why generator-first
+
+The generator is a deterministic backbone, testable independent of any LLM
+call: given a spec, the output is byte-for-byte reproducible (verified —
+regenerating a connector produces an identical file). That gives a stable
+target for the next stage to build against, and a way to tell "the LLM got
+the mapping wrong" apart from "the codegen is non-deterministic/buggy."
+
+### Sample data
+
+`scripts/generate_sample_data.py` generates a synthetic but plausible
+telemetry capture: one fixed weather station site emitting paired ASCII
+observation sentences, plus a second vendor's station at the same site
+reporting over Modbus. It's seeded (deterministic, reproducible) and writes:
+
+```
+sample_data/weather_obs_log.txt           60 sentences (30 WXOBS + 30 WXOBSF)
+sample_data/weather_station_modbus.jsonl  30 register snapshots
+```
+
+This is fixture data for exercising the pipeline end-to-end — it is
+generated *from* the connectors' own spec assumptions, so it proves the
+generator is internally consistent, not that real hardware matches those
+assumptions. See "What's actually verified" below.
+
+### Pipeline: connectors → canonical → InfluxDB
+
+```
+pipeline/influx_sink.py    CanonicalReading -> influxdb_client.Point
+pipeline/run_pipeline.py   reads sample_data/, runs it through the
+                            connectors, writes points to InfluxDB
+```
+
+All readings share one InfluxDB measurement, `iot_reading`; protocol
+and message type are tags, not the measurement name, so a single query can
+span every protocol/vendor for a device.
+
+```
+# Print line-protocol output, no InfluxDB required:
+python -m pipeline.run_pipeline --dry-run
+
+# Write to a real InfluxDB (see the docker-compose stack below):
+INFLUX_TOKEN=devtoken-not-a-secret python -m pipeline.run_pipeline
+```
+
+### Local test environment: InfluxDB + Grafana + Node-RED
+
+```
+docker compose up -d
+```
+
+- **InfluxDB** (`localhost:8086`) — org `iot`, bucket `telemetry`,
+  admin token `devtoken-not-a-secret` (a local-dev placeholder baked into
+  `docker-compose.yml` and `grafana/provisioning/datasources/influxdb.yaml`
+  — not meant to be a real secret; change it if this ever runs anywhere
+  beyond your own machine).
+- **Grafana** (`localhost:3000`, anonymous viewer access enabled) —
+  auto-provisioned with the InfluxDB datasource and an "IoT Telemetry
+  Overview" dashboard (temperature, humidity, wind speed, rainfall from
+  the second vendor's Modbus station, latest observation).
+- **Node-RED** (`localhost:1880`) — an alternative ingest path to
+  `pipeline/run_pipeline.py`: `POST /ingest/reading` with a
+  `CanonicalReading.to_dict()`-shaped JSON body, and its one function node
+  converts it to InfluxDB line protocol and writes it, exactly like
+  `pipeline/influx_sink.py` does in Python. This demonstrates the canonical
+  schema working as a real cross-language contract, not just a Python-internal
+  convenience. Try it once the stack is up:
+
+  ```
+  curl -X POST http://localhost:1880/ingest/reading \
+    -H 'Content-Type: application/json' \
+    -d '{"device_id":"site-1","protocol":"wx_ascii","message_type":"WXOBS",
+         "timestamp":"2026-09-21T12:35:19Z",
+         "measurements":[{"name":"temperature_c","value":23.5,"unit":"celsius"}],
+         "location":{"lat":48.1173,"lon":11.5167}}'
+  ```
+
+Then load the sample data into InfluxDB and open Grafana:
+
+```
+INFLUX_TOKEN=devtoken-not-a-secret python -m pipeline.run_pipeline
+open http://localhost:3000   # dashboard: IoT Telemetry Overview
+```
+
+### What's actually verified, and what isn't
+
+This sandbox can run the Docker CLI and daemon, but its network policy
+blocks pulls from Docker Hub's image CDN (`production.cloudfront.docker.com`
+returns 403 from the proxy) — confirmed, not assumed. So none of this stack
+has been visually confirmed running end-to-end here. What *was* verified
+in this environment, without a live container:
+
+- `docker compose config` resolves the compose file cleanly (services,
+  volumes, `depends_on`, port mappings all structurally valid).
+- `grafana/provisioning/**/*.{yaml,json}` all parse as valid YAML/JSON —
+  the dashboard JSON was hand-authored, not exported from a running
+  Grafana, so treat it as a good-faith starting point rather than a
+  guaranteed-perfect import; it may need minor adjustment on first load.
+- The Node-RED flow's logic doesn't need Node-RED to check: the exact
+  `func` string is extracted straight out of `nodered/flows.json` and
+  executed under plain Node.js in `tests/test_nodered_flow.js`, asserting
+  it produces the same line protocol as `pipeline/influx_sink.py`'s Python
+  implementation for the same input, including the edge case (a reading
+  with nothing to write). Run it with `node tests/test_nodered_flow.js`.
+- The Python side of the pipeline (sample data → connectors → canonical →
+  `Point.to_line_protocol()`) is fully covered by `pytest` without a live
+  InfluxDB — `Point` serialization is pure and needs no network connection.
+
+The images are official multi-arch builds (`influxdb:2`, `grafana/grafana`,
+`nodered/node-red`) and should pull and run natively on Apple Silicon.
+Once it's up on your machine, the honest verification loop is: confirm
+`docker compose ps` shows all three healthy, run the pipeline, open
+Grafana and see the panels populate, and try the `curl` above against
+Node-RED and confirm the point shows up in Grafana too.
+
+### Stage 2 (planned, not yet built): LLM-assisted spec/connector authoring
 
 Have an LLM draft the declarative spec (or the connector directly) from raw,
 unstructured protocol documentation — a sensor's ASCII sentence table, a
