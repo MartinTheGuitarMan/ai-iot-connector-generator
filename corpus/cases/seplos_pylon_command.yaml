@@ -1,0 +1,11 @@
+id: seplos_pylon_command
+name: Seplos BMS RS485 (Pylontech/YD-T 1363 style) telemetry command, checksum as hex text
+source: https://forum.iobroker.net/assets/uploads/files/1631599969177-seplos-48v-100a-bms-rs485-protocol.pdf (Table 7 telemetry command, bytes 7E 32 30 30 30 34 36 34 32 45 30 30 32 30 31 46 44 33 35 0D)
+doc_rule: 'The document says: sum the ASCII codes, take modulo 65536, invert and add 1. The real frame in the same document does NOT follow that: the sum is 02CA, the stored value is FD35, which is the inverted sum WITHOUT the +1 (the +1 rule would give FD36). The prose is wrong, the frame is right.'
+note: 'One frame, so low confidence. The checksum is 4 hex characters over the ASCII characters, which no earlier pass could see. Written up as a new failure class, then fixed by the ascii_hex pass.'
+frames:
+- 7e 32 30 30 30 34 36 34 32 45 30 30 32 30 31 46 44 33 35 0d
+reference:
+  algo: ascii_hex_invsum
+  width_chars: 4
+  start: 1

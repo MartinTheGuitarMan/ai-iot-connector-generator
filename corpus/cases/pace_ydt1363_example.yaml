@@ -1,0 +1,11 @@
+id: pace_ydt1363_example
+name: PACE RS232 BMS (YD/T 1363 style) worked checksum example
+source: https://manualmachine.com/pace/rs232/28660329-user-manual (section 2.4 CHKSUM example frame ~1203400356ABCEFEFC72, CR)
+doc_rule: 'Sum all ASCII codes between SOI (~) and the checksum, modulo 65536, invert and add 1: sum 038E gives FC72, stored FC72. Verified by computing.'
+note: 'One frame. Same family as the Seplos case but the convention differs (here +1, Seplos frame has none). The Seplos manual prints the same example with a typo (456 instead of 356) that makes its own rule fail by one, so that variant was not used.'
+frames:
+- 7e 31 32 30 33 34 30 30 33 35 36 41 42 43 45 46 45 46 43 37 32 0d
+reference:
+  algo: ascii_hex_negsum
+  width_chars: 4
+  start: 1

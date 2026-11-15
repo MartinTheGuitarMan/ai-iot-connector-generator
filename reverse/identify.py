@@ -168,6 +168,7 @@ def identify(frames: list[bytes], kb: KnowledgeBase | None = None, max_results: 
         "nested": nested,
         "poly_sweep": swept,
         "header_checks": header_checks,
+        "ascii_hex_checks": find_ascii_hex_checks(frames) if _depth == 0 else [],
         "seeded_crc16": seeded[:max_results],
         "seeded_confidence": (lambda b: "high" if b >= 40 else "medium" if b >= 20 else "low")(
             16 * len(frames) - 8 * max((s["groups"] for s in seeded), default=1)) if seeded else None,
@@ -243,6 +244,40 @@ def find_header_checks(frames: list[bytes], sync_len: int, kb: KnowledgeBase, ma
         h["confidence"] = "high" if bits >= 40 else "medium" if bits >= 20 else "low"
     out.sort(key=lambda h: ({"high": 0, "medium": 1, "low": 2}[h["confidence"]], h["header_len"]))
     return out[:8]
+
+
+_ASCII_OPS = {"sum": lambda s, m: s & m, "negsum": lambda s, m: (-s) & m, "invsum": lambda s, m: (~s) & m}
+
+
+def find_ascii_hex_checks(frames: list[bytes]) -> list[dict]:
+    """Text frames whose checksum is written as 2 or 4 hex ASCII characters (before an optional CR/LF) and is
+    computed over the ASCII characters themselves, not over the decoded bytes (Pylontech, Seplos, PACE
+    YD/T 1363 style: '~' + hex text + 4-digit negated 16-bit sum + CR). Every start offset 0-2, width, and
+    operation (sum, negated sum, inverted sum) is tried; all frames must agree. Confidence prices the tries."""
+    if not frames or not all(len(f) > 6 and all(32 <= c < 127 or c in (10, 13) for c in f) for f in frames):
+        return []
+    out, tries = [], 0
+    for w in (2, 4):
+        for start in range(3):
+            for op, fn in _ASCII_OPS.items():
+                tries += 1
+                ok = True
+                for f in frames:
+                    t = f.rstrip(b"\r\n")
+                    tail = t[-w:]
+                    if len(t) - w <= start or not all(chr(c) in "0123456789ABCDEFabcdef" for c in tail):
+                        ok = False
+                        break
+                    mask = (1 << (4 * w)) - 1
+                    if fn(sum(t[start:-w]), mask) != int(tail, 16):
+                        ok = False
+                        break
+                if ok:
+                    out.append({"algo": "ascii_hex_" + op, "width_chars": w, "start": start})
+    for h in out:
+        bits = len(frames) * 4 * h["width_chars"] - math.log2(max(tries, 2))
+        h["confidence"] = "high" if bits >= 40 else "medium" if bits >= 20 else "low"
+    return out
 
 
 def detect_block_crc(frames: list[bytes], header_len: int, rule: dict, sizes=(8, 16, 32, 64, 128, 255)) -> int | None:

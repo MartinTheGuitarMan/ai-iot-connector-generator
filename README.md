@@ -299,8 +299,8 @@ python scripts/run_corpus.py
 python -m reverse.cli identify --frames frames.txt     # one hex frame per line; ':7A8ED00B9' and '$..*hh' lines work too
 ```
 
-Currently 27 of 27 cases find the documented rule (Modbus RTU, DNP3, UBX, Tuya, Plantower, Daly, JBD, Sensirion
-SHDLC and I2C words, XBee, Winsen, Cressi, Victron VE.Direct HEX, wired M-Bus, 1-Wire DS18B20, WHOOP, PPP/HDLC, the Davis console CRC, Modbus ASCII, MAVLink, Dynamixel 2.0, CRSF, BACnet MS/TP, VE.Direct text);
+Currently 29 of 29 cases find the documented rule (Modbus RTU, DNP3, UBX, Tuya, Plantower, Daly, JBD, Sensirion
+SHDLC and I2C words, XBee, Winsen, Cressi, Victron VE.Direct HEX, wired M-Bus, 1-Wire DS18B20, WHOOP, PPP/HDLC, the Davis console CRC, Modbus ASCII, MAVLink, Dynamixel 2.0, CRSF, BACnet MS/TP, VE.Direct text, Seplos and PACE YD/T 1363 style);
 12 of them with high confidence. Checksum families: CRC-8/16/32 (poly, init, reflection, final XOR, byte order),
 Fletcher, 8/16-bit sums and negated sums, XOR. Byte-stuffed frames (HDLC/PPP 7E/7D, SLIP) are unstuffed first,
 but only when every frame starts and ends with the same flag byte (`reverse/stuffing.py`). Also covered: SeaTalk 1's low-nibble length rule
@@ -330,6 +330,11 @@ A check can also sit mid-frame (BACnet MS/TP: a CRC-8 over the 5-byte header, th
 pass tries every prefix length from 3 to 14 bytes as if it were a frame with a trailing check, needs at least 2 frames, and
 subtracts log2(prefix lengths x candidates tried) from the confidence. With two real MS/TP frames it finds the header CRC-8
 (poly 0x81, init FF, complemented) at low confidence. The payload CRC-16 after a variable-length payload is not located yet.
+
+Text frames whose checksum is itself written as hex text and computed over the ASCII characters (the Pylontech/Seplos/PACE
+family: '~' + hex text + 4 hex digits + CR) get their own pass: start offset 0-2, 2 or 4 digits, and sum / negated sum /
+inverted sum are tried. Two real documents disagree on the convention (+1 or not), and the vendor's own prose disagrees
+with its own example frame, so the tool reports what the frame satisfies, not what the manual says.
 
 Be careful with the numbers: one or two frames cannot separate rules that agree by chance (the output says
 `confidence: low`), a constant solved from the data (Victron's 0x55) counts as a free parameter, and the Modbus case

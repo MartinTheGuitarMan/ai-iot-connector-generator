@@ -420,3 +420,18 @@ def test_bacnet_header_crc_found_mid_frame():
 def test_header_checks_need_two_frames():
     from reverse.identify import identify
     assert identify([bytes.fromhex("55ff051000000 6e8010301040101e399".replace(" ", ""))])["header_checks"] == []
+
+
+def test_ascii_hex_checks_and_conventions_differ():
+    from reverse.identify import identify
+    seplos = identify([b"~20004642E00201FD35\r"])["ascii_hex_checks"]
+    pace = identify([b"~1203400356ABCEFEFC72\r"])["ascii_hex_checks"]
+    assert [(h["algo"], h["width_chars"], h["start"]) for h in seplos] == [("ascii_hex_invsum", 4, 1)]
+    assert [(h["algo"], h["width_chars"], h["start"]) for h in pace] == [("ascii_hex_negsum", 4, 1)]
+    # the typo variant printed in the Seplos manual does not satisfy either convention
+    assert identify([b"~1203400456ABCEFEFC72\r"])["ascii_hex_checks"] == []
+
+
+def test_ascii_hex_ignores_binary_and_plain_text():
+    from reverse.identify import identify
+    assert identify([bytes([0xAA, 1, 2, 3, 4, 5, 6, 7, 8])])["ascii_hex_checks"] == []

@@ -35,6 +35,14 @@ def run():
         if c.get("stuffing"):
             from reverse.stuffing import unstuff, detect
             frames = unstuff(frames, detect(frames))
+        if c["reference"]["algo"].startswith("ascii_hex"):
+            # checksum written as hex text over the ASCII characters: judged against r["ascii_hex_checks"]
+            hit = [h for h in r["ascii_hex_checks"] if all(h[k] == c["reference"][k] for k in ("algo", "width_chars", "start"))]
+            rows.append(dict(id=c["id"], n=len(frames), conf=hit[0]["confidence"] if hit else r["confidence"],
+                             cands=len(r["ascii_hex_checks"]), ref_valid=True,
+                             top=(r["ascii_hex_checks"][0]["algo"], c["reference"]["start"], 0) if r["ascii_hex_checks"] else None,
+                             top_validates=bool(hit), reference_found=bool(hit), partial=None))
+            continue
         rp, rt = reference_rule(c["reference"])
         # a case may list frames the documented rule is known not to fit (tolerant cases); the rule must
         # fail on exactly those and nowhere else
