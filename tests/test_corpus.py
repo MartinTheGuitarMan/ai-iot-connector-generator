@@ -468,3 +468,19 @@ def test_report_is_readable_and_honest():
     junk = [bytes((i * 37 + j * 91 + 5) % 251 for j in range(40)) for i in range(6)]
     rj = identify(junk)
     assert found_anything(rj) == bool(rj["matches"] or rj.get("header_checks") or rj.get("padded_check") or rj.get("seeded_crc16") or rj.get("nested") or rj.get("ascii_hex_checks"))
+
+
+def test_dsmr_crc16_over_ascii_text():
+    """DSMR P1: CRC-16/ARC over the text from '/' up to and including '!', written as 4 hex characters."""
+    import yaml
+    from pathlib import Path
+    from reverse.identify import identify
+    c = yaml.safe_load((Path(__file__).resolve().parents[1] / "corpus/cases/dsmr_p1_v42.yaml").read_text())
+    telegram = bytes.fromhex(c["frames"][0])
+    assert telegram.startswith(b"/KFM5KAIFA-METER") and telegram.endswith(b"!6796\r\n")
+    hits = identify([telegram])["ascii_hex_checks"]
+    crc = [h for h in hits if h["algo"] == "ascii_hex_crc16"]
+    assert crc and (crc[0]["poly"], crc[0]["init"], crc[0]["reflected"], crc[0]["xorout"], crc[0]["start"]) == (0x8005, 0, True, 0, 0)
+    assert crc[0]["confidence"] == "low"          # one frame, 16 bits of evidence, minus the tries
+    corrupted = telegram.replace(b"001581.123", b"001581.124")
+    assert not [h for h in identify([corrupted])["ascii_hex_checks"] if h["algo"] == "ascii_hex_crc16"]

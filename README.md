@@ -2,7 +2,7 @@
 
 **Infer the grammar of legacy IoT protocols from captured frames.** Not quite the universal translator, but working on it.
 
-![license](https://img.shields.io/badge/license-MIT-blue) ![python](https://img.shields.io/badge/python-3-blue) ![corpus](https://img.shields.io/badge/real%20protocols%20tested-30-brightgreen)
+![license](https://img.shields.io/badge/license-MIT-blue) ![python](https://img.shields.io/badge/python-3-blue) ![corpus](https://img.shields.io/badge/real%20protocols%20tested-31-brightgreen)
 
 ## TL;DR
 
@@ -16,13 +16,13 @@ intact. That is the part that normally costs days of hex-staring.
   From there it can generate a connector that turns the device's output into clean, structured data.
 - **What it does not do (yet):** tell you what a number *means*. Volts or litres is a job for the manual, an LLM and someone who
   knows the equipment. That review step is the plan, not the product.
-- **How far along:** early. It has been tested on 30 real protocols, from building automation to GPS trackers to batteries, and
+- **How far along:** early. It has been tested on 31 real protocols, from building automation to GPS trackers to batteries, and
   it gets some wrong. Those failures are listed openly.
 
 **Try it in a minute:** `python -m reverse.cli identify --frames frames.txt` (see [Quick start](#quick-start)).
 Have a device it fails on? That is the most useful thing you can send: [how to add it](#contribute-a-protocol-in-ten-minutes).
 
-[See it work](#see-it-work) · [How it works](#how-it-works) · [30 real protocols](#tested-on-30-real-protocols) · [Known failures](#known-failures-the-corpus-is-not-a-victory-lap) · [Contribute](#contribute-a-protocol-in-ten-minutes) · [Where this is going](#where-this-is-going)
+[See it work](#see-it-work) · [How it works](#how-it-works) · [31 real protocols](#tested-on-31-real-protocols) · [Known failures](#known-failures-the-corpus-is-not-a-victory-lap) · [Contribute](#contribute-a-protocol-in-ten-minutes) · [Where this is going](#where-this-is-going)
 
 ## The problem
 
@@ -89,7 +89,7 @@ Solid arrows work today. Dashed arrows are the planned review step, deliberately
 - **It only learns what was validated.** Rules found by tolerant or sweeping passes are never written to the knowledge base.
 - **Failures are written up, not hidden.** See [Known failures](#known-failures-the-corpus-is-not-a-victory-lap).
 
-## Tested on 30 real protocols
+## Tested on 31 real protocols
 
 Every frame in the corpus comes from a datasheet, a forum thread or a public repo, with its source link in
 [`corpus/cases/`](corpus/cases). The tool is given only the frames and has to find the documented rule itself.
@@ -102,6 +102,7 @@ Every frame in the corpus comes from a datasheet, a forum thread or a public rep
 | Daly smart BMS | 14 | 8-bit sum: yes | high |
 | Davis Vantage console CRC | 1 | CRC-16 poly 0x1021: yes | low |
 | DNP3 link-layer headers | 12 | CRC-16 poly 0x3D65: yes | high |
+| DSMR 4.2 P1 smart-meter telegram | 1 | sum over ASCII text, negated: yes | low |
 | ROBOTIS Dynamixel Protocol 2.0 | 24 | CRC-16 poly 0x8005: yes | high |
 | JBD / Xiaoxiang smart BMS | 18 | negated 16-bit sum: yes | high |
 | MAVLink v1 HEARTBEAT | 1 | CRC-16 poly 0x1021 (seeded): yes | low |
@@ -138,7 +139,7 @@ git clone https://github.com/MartinTheGuitarMan/iot-rosetta
 cd iot-rosetta
 pip install -r requirements.txt
 
-python scripts/run_corpus.py                                  # score the tool against all 30 real cases
+python scripts/run_corpus.py                                  # score the tool against all 31 real cases
 python -m reverse.cli identify --frames frames.txt            # one hex frame per line
 PYTHONPATH=. python -m pytest -q                              # tests (two modules need influxdb_client)
 ```
@@ -262,8 +263,8 @@ python scripts/run_corpus.py
 python -m reverse.cli identify --frames frames.txt     # one hex frame per line; ':7A8ED00B9' and '$..*hh' lines work too
 ```
 
-Currently 30 of 30 cases find the documented rule (Modbus RTU, DNP3, UBX, Tuya, Plantower, Daly, JBD, Sensirion
-SHDLC and I2C words, XBee, Winsen, Cressi, Victron VE.Direct HEX, wired M-Bus, 1-Wire DS18B20, WHOOP, PPP/HDLC, the Davis console CRC, Modbus ASCII, MAVLink, Dynamixel 2.0, CRSF, BACnet MS/TP, VE.Direct text, Seplos and PACE YD/T 1363 style, Teltonika Codec 8);
+Currently 31 of 31 cases find the documented rule (Modbus RTU, DNP3, UBX, Tuya, Plantower, Daly, JBD, Sensirion
+SHDLC and I2C words, XBee, Winsen, Cressi, Victron VE.Direct HEX, wired M-Bus, 1-Wire DS18B20, WHOOP, PPP/HDLC, the Davis console CRC, Modbus ASCII, MAVLink, Dynamixel 2.0, CRSF, BACnet MS/TP, VE.Direct text, Seplos and PACE YD/T 1363 style, Teltonika Codec 8, DSMR P1 smart meters);
 13 of them with high confidence. Checksum families: CRC-8/16/32 (poly, init, reflection, final XOR, byte order),
 Fletcher, 8/16-bit sums and negated sums, XOR. Byte-stuffed frames (HDLC/PPP 7E/7D, SLIP) are unstuffed first,
 but only when every frame starts and ends with the same flag byte (`reverse/stuffing.py`). Also covered: SeaTalk 1's low-nibble length rule
@@ -315,6 +316,7 @@ BSD-3-Clause, Copyright (c) 2010-2012 Raditex Control AB.
 - Davis: only a short frame is in the corpus; the full LOOP packet is missing.
 - BACnet MS/TP: the payload CRC-16 after a variable-length payload is not located, only the header CRC-8.
 - Teltonika: the 4-byte data length field is not found (length search covers 1-2 byte fields).
+- DSMR: meters whose CRC drops leading zeros (`!B9F` instead of `!0B9F`) are not handled yet; only the 4-digit form is.
 - One or two tiny frames always give chance candidates; the tool says `low` and lists them.
 - Published parameters can be wrong (WHOOP, the Seplos manual's prose): the frame wins over the page.
 - Unknown 16/32-bit polynomials cannot be recovered; only an 8-bit polynomial sweep exists.

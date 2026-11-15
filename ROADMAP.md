@@ -5,14 +5,14 @@ Where iot-rosetta is going, in order of how soon. Nothing here is a promise; the
 
 ## Now: widen the evidence
 
-- Grow the corpus from 30 to 50 real protocols. Priority families: smart meters (DSMR P1, IEC 62056-21), building
+- Grow the corpus from 31 to 50 real protocols. Priority families: smart meters (DSMR P1, IEC 62056-21), building
   automation, battery management, GPS trackers, industrial and manufacturing buses.
 - Make contributing easy: a case is one YAML file ([CONTRIBUTING.md](CONTRIBUTING.md)).
 - Keep every finding verified against a real frame, with the source linked. The frame beats the manual.
 
 ## Next: close known gaps
 
-- **CRC over ASCII text** written as hex characters (DSMR P1: CRC-16 over the text from `/` to `!`). Today only sums are handled.
+- **DSMR CRCs that drop leading zeros** (`!B9F` for `!0B9F`). The 4-digit form (CRC-16 over the ASCII text) is done.
 - **Candidate ranking prior** to cut chance matches on one or two tiny frames.
 - **Length fields wider than 2 bytes** (Teltonika's 4-byte length) and **payload CRC after a variable-length payload** (BACnet MS/TP).
 - **Insertion-style byte stuffing** (Dynamixel 2.0).

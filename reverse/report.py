@@ -9,8 +9,9 @@ _NAMES = {"crc8": "CRC-8", "crc16": "CRC-16", "crc32": "CRC-32", "fletcher8": "F
 
 def describe_rule(m: dict) -> str:
     algo = m["algo"]
-    bits = {"crc8": 8, "crc16": 16, "crc32": 32}.get(algo)
-    out = _NAMES.get(algo, algo)
+    core = algo[len("ascii_hex_"):] if algo.startswith("ascii_hex_crc") else algo
+    bits = {"crc8": 8, "crc16": 16, "crc32": 32}.get(core)
+    out = _NAMES.get(core, core) + (" over the ASCII characters" if core != algo else "")
     if bits:
         w = bits // 4
         out += (f", poly 0x{m['poly']:0{w}X}, init 0x{m['init']:0{w}X}, "
@@ -44,6 +45,10 @@ def format_report(res: dict) -> list[str]:
     lines = [f"{res['frames']} frame(s), confidence {head}" if head else f"{res['frames']} frame(s)"]
     if res.get("stuffing"):
         lines.append(f"byte stuffing detected and removed first: {res['stuffing']}")
+    # checks written as hex text come first: they are more specific than chance matches on the raw bytes
+    for h in res.get("ascii_hex_checks") or []:
+        found = True
+        lines.append(f"  hex-text checksum ({h['confidence']}): " + describe_rule(h))
     for m in res["matches"][:3]:
         found = True
         lines.append("  rule: " + describe_rule(m))
@@ -59,9 +64,6 @@ def format_report(res: dict) -> list[str]:
     for h in res.get("header_checks") or []:
         found = True
         lines.append(f"  mid-frame check ({h['confidence']}): " + describe_rule(h))
-    for h in res.get("ascii_hex_checks") or []:
-        found = True
-        lines.append(f"  hex-text checksum ({h['confidence']}): " + describe_rule(h))
     if res.get("padded_check"):
         found = True
         p = res["padded_check"]

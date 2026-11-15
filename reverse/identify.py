@@ -277,6 +277,23 @@ def find_ascii_hex_checks(frames: list[bytes]) -> list[dict]:
                         break
                 if ok:
                     out.append({"algo": "ascii_hex_" + op, "width_chars": w, "start": start})
+    # CRCs over the ASCII text, written as 2, 4 or 8 hex characters (DSMR P1: CRC-16/ARC from '/' up to and including '!').
+    from reverse import infer as _inf
+    shapes = (("crc8", 2, [dict(poly=p, init=i, reflected=r, xorout=x) for p in _inf._CRC8_POLYS for i in (0, 0xFF) for r in (True, False) for x in (0, 0xFF)]),
+              ("crc16", 4, [dict(poly=p, init=i, reflected=r, xorout=x) for p in _inf._BUILTIN_POLYS for i in (0, 0xFFFF) for r in (True, False) for x in (0, 0xFFFF)]),
+              ("crc32", 8, [dict(poly=p, init=i, reflected=r, xorout=x) for p in _inf._CRC32_POLYS for i in (0, 0xFFFFFFFF) for r in (True, False) for x in (0, 0xFFFFFFFF)]))
+    hexdigits = b"0123456789ABCDEFabcdef"
+    for algo, w, cands in shapes:
+        trimmed = [f.rstrip(b"\r\n") for f in frames]
+        if not all(len(t) > w + 2 and all(c in hexdigits for c in t[-w:]) for t in trimmed):
+            continue
+        for start in range(3):
+            for c in cands:
+                tries += 1
+                if all(_inf.checksum(t[start:-w], algo, c["poly"], c["init"], c["reflected"], c["xorout"]) == int(t[-w:], 16) for t in trimmed):
+                    out.append({"algo": "ascii_hex_" + algo, "width_chars": w, "start": start, **c})
+    # a rule whose evidence does not beat the number of tries is indistinguishable from chance: do not report it
+    out = [h for h in out if len(frames) * 4 * h["width_chars"] - math.log2(max(tries, 2)) > 0]
     for h in out:
         bits = len(frames) * 4 * h["width_chars"] - math.log2(max(tries, 2))
         h["confidence"] = "high" if bits >= 40 else "medium" if bits >= 20 else "low"
