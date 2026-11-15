@@ -156,6 +156,8 @@ Details in [CONTRIBUTING.md](CONTRIBUTING.md). If you have a Seplos or Pylontech
 
 ## Where this is going
 
+The full list is in [ROADMAP.md](ROADMAP.md). The short version:
+
 The long-term picture is a "universal translator" for IoT, in three roles:
 
 1. **The tool infers the grammar** from captured frames (this repository, today).
