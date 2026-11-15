@@ -1,0 +1,48 @@
+protocol: vessel_legacy
+transport: framed_binary
+framing:
+  sync: 7ec3
+  length_offset: 2
+  length_overhead: 7
+  type_offset: 3
+  payload_offset: 5
+  seq_offset: 4
+  crc:
+    poly: 32773
+    init: 65535
+    reflected: true
+    xorout: 0
+    start: 2
+    endian: little
+message:
+  id: engine
+  description: Inferred from a capture (1974 frames, type 0x10)
+  type_value: 16
+  payload_length: 5
+fields:
+- name: rpm
+  type: uint16_be
+  offset: 0
+  scale: 1.0
+  unit: rpm
+- name: coolant_c
+  type: uint16_be
+  offset: 2
+  scale: 0.1
+  unit: celsius
+- name: oil_bar
+  type: uint8
+  offset: 4
+  scale: 0.05
+  unit: bar
+canonical:
+  measurements:
+  - name: rpm
+    field: rpm
+    unit: rpm
+  - name: coolant_c
+    field: coolant_c
+    unit: celsius
+  - name: oil_bar
+    field: oil_bar
+    unit: bar

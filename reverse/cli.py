@@ -1,0 +1,50 @@
+"""CLI: infer connector specs from a raw capture + anchor readings.
+
+Usage:
+    python -m reverse.cli infer --capture capture.bin --anchors anchors.yaml \
+        --protocol vessel_legacy --out-dir specs/ [--connectors-dir connectors/]
+"""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import yaml
+
+from generator.codegen import generate
+from generator.spec import ProtocolSpec
+from reverse.infer import infer_specs
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="reverse")
+    sub = ap.add_subparsers(dest="command", required=True)
+    inf = sub.add_parser("infer", help="Infer framed_binary specs from a capture")
+    inf.add_argument("--capture", required=True, type=Path)
+    inf.add_argument("--anchors", required=True, type=Path)
+    inf.add_argument("--protocol", required=True, help="protocol name used in the specs")
+    inf.add_argument("--out-dir", required=True, type=Path, help="where to write <protocol>_<message>.yaml")
+    inf.add_argument("--connectors-dir", type=Path, help="also generate connector modules here")
+    args = ap.parse_args(argv)
+
+    anchors = yaml.safe_load(args.anchors.read_text())["anchors"]
+    _, specs, report = infer_specs(args.capture.read_bytes(), anchors, args.protocol)
+    print("\n".join(report))
+
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    for msg, d in specs.items():
+        ProtocolSpec.from_dict(d)  # same validation as hand-written specs
+        path = args.out_dir / f"{args.protocol}_{msg}.yaml"
+        path.write_text(yaml.safe_dump(d, sort_keys=False))
+        print(f"wrote {path}")
+        if args.connectors_dir:
+            args.connectors_dir.mkdir(parents=True, exist_ok=True)
+            out = args.connectors_dir / f"{args.protocol}_{msg}.py"
+            out.write_text(generate(ProtocolSpec.from_yaml(path)))
+            print(f"wrote {out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

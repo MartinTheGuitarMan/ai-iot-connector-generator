@@ -8,7 +8,7 @@ the tool that produced it.
 
 from __future__ import annotations
 
-from generator.spec import FieldSpec, ProtocolSpec
+from generator.spec import FRAMED_BINARY_FIELD_WIDTHS, FieldSpec, ProtocolSpec
 
 _HEADER = '''\
 """Generated connector for {protocol} / {message_id} — DO NOT EDIT BY HAND.
@@ -27,6 +27,8 @@ def generate(spec: ProtocolSpec) -> str:
         return _generate_delimited_text(spec)
     if spec.transport == "register_map":
         return _generate_register_map(spec)
+    if spec.transport == "framed_binary":
+        return _generate_framed_binary(spec)
     raise ValueError(f"no codegen backend for transport {spec.transport!r}")
 
 
@@ -336,3 +338,162 @@ def _emit_helpers(lines: list[str], block: str, wanted: set[str]) -> None:
     if selected:
         lines.append("\n\n\n".join(selected))
         lines.append("")
+
+
+# ---------------------------------------------------------------------------
+# framed_binary backend (sync + length + type + payload + CRC16 frames)
+# ---------------------------------------------------------------------------
+
+_STRUCT_FORMATS = {
+    "uint8": "B", "int8": "b",
+    "uint16_be": ">H", "uint16_le": "<H", "int16_be": ">h", "int16_le": "<h",
+    "uint32_be": ">I", "uint32_le": "<I", "int32_be": ">i", "int32_le": "<i",
+}
+
+_CRC16_REFLECTED = '''\
+def _crc16(data: bytes) -> int:
+    crc = CRC_INIT
+    for b in data:
+        crc ^= b
+        for _ in range(8):
+            crc = (crc >> 1) ^ CRC_POLY if crc & 1 else crc >> 1
+    return crc ^ CRC_XOROUT
+'''
+
+_CRC16_PLAIN = '''\
+def _crc16(data: bytes) -> int:
+    crc = CRC_INIT
+    for b in data:
+        crc ^= b << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ CRC_POLY) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
+    return crc ^ CRC_XOROUT
+'''
+
+
+def _reflect16(value: int) -> int:
+    return int(f"{value & 0xFFFF:016b}"[::-1], 2)
+
+
+def _generate_framed_binary(spec: ProtocolSpec) -> str:
+    fr = spec.framing
+    crc = fr.crc
+    payload_end_expr = "len(frame) - CRC_LEN"
+    lines: list[str] = []
+    lines.append(_HEADER.format(protocol=spec.protocol, message_id=spec.message.id))
+    lines.append("import struct\n")
+    lines.append("from typing import Iterator\n")
+    lines.append("from canonical import CanonicalReading, Measurement\n\n")
+    lines.append(f'PROTOCOL = "{spec.protocol}"')
+    lines.append(f'MESSAGE_TYPE = "{spec.message.id}"')
+    lines.append("")
+    lines.append(f'SYNC = bytes.fromhex("{fr.sync}")')
+    lines.append(f"LENGTH_OFFSET = {fr.length_offset}")
+    lines.append(f"LENGTH_OVERHEAD = {fr.length_overhead}")
+    lines.append(f"TYPE_OFFSET = {fr.type_offset}")
+    lines.append(f"PAYLOAD_OFFSET = {fr.payload_offset}")
+    lines.append(f"TYPE_VALUE = {spec.message.type_value:#04x}")
+    if spec.message.payload_length is not None:
+        lines.append(f"PAYLOAD_LENGTH = {spec.message.payload_length}")
+    lines.append(f"CRC_LEN = {2 if crc else 0}")
+    if crc:
+        poly = _reflect16(crc.poly) if crc.reflected else crc.poly
+        lines.append(f"CRC_START = {crc.start}")
+        lines.append(f"CRC_POLY = {poly:#06x}")
+        lines.append(f"CRC_INIT = {crc.init:#06x}")
+        lines.append(f"CRC_XOROUT = {crc.xorout:#06x}")
+        lines.append(f'CRC_BYTEORDER = "{crc.endian}"')
+    lines.append("")
+    lines.append("")
+    if crc:
+        lines.append((_CRC16_REFLECTED if crc.reflected else _CRC16_PLAIN).rstrip("\n"))
+        lines.append("")
+        lines.append("")
+        lines.append("def _crc_ok(frame: bytes) -> bool:")
+        lines.append("    stored = int.from_bytes(frame[-2:], CRC_BYTEORDER)")
+        lines.append("    return _crc16(frame[CRC_START:-2]) == stored")
+    else:
+        lines.append("def _crc_ok(frame: bytes) -> bool:")
+        lines.append("    return True")
+    lines.append("")
+    lines.append("")
+    lines.append("def iter_frames(stream: bytes) -> Iterator[bytes]:")
+    lines.append('    """Yield every well-formed frame (any message type) found in a byte stream.')
+    lines.append("")
+    lines.append("    Resynchronises on the sync bytes after line noise or a corrupt frame:")
+    lines.append("    a candidate whose length or CRC does not check out is skipped one")
+    lines.append('    byte at a time.')
+    lines.append('    """')
+    lines.append("    i, n = 0, len(stream)")
+    lines.append("    while True:")
+    lines.append("        i = stream.find(SYNC, i)")
+    lines.append("        if i < 0 or i + LENGTH_OFFSET >= n:")
+    lines.append("            return")
+    lines.append("        end = i + stream[i + LENGTH_OFFSET] + LENGTH_OVERHEAD")
+    lines.append("        if end <= n and _crc_ok(stream[i:end]):")
+    lines.append("            yield stream[i:end]")
+    lines.append("            i = end")
+    lines.append("        else:")
+    lines.append("            i += 1")
+    lines.append("")
+    lines.append("")
+    lines.append("def parse(")
+    lines.append("    frame: bytes,")
+    lines.append("    device_id: str,")
+    lines.append("    timestamp: str,")
+    lines.append(") -> CanonicalReading | None:")
+    lines.append(f'    """Parse one {spec.message.id} frame into a CanonicalReading.')
+    lines.append("")
+    lines.append("    Returns None for frames of another message type or that fail the")
+    lines.append("    length / CRC checks. The wire has no clock, so the caller supplies")
+    lines.append('    the timestamp.')
+    lines.append('    """')
+    lines.append("    if frame[: len(SYNC)] != SYNC or len(frame) <= max(LENGTH_OFFSET, TYPE_OFFSET):")
+    lines.append("        return None")
+    lines.append("    if len(frame) != frame[LENGTH_OFFSET] + LENGTH_OVERHEAD or not _crc_ok(frame):")
+    lines.append("        return None")
+    lines.append("    if frame[TYPE_OFFSET] != TYPE_VALUE:")
+    lines.append("        return None")
+    lines.append(f"    payload = frame[PAYLOAD_OFFSET:{payload_end_expr}]")
+    if spec.message.payload_length is not None:
+        lines.append("    if len(payload) != PAYLOAD_LENGTH:")
+    else:
+        need = max(f.offset + FRAMED_BINARY_FIELD_WIDTHS[f.type] for f in spec.fields)
+        lines.append(f"    if len(payload) < {need}:")
+    lines.append("        return None")
+    lines.append("")
+    for f in spec.fields:
+        lines.append(
+            f"    {f.name}_raw = struct.unpack_from(\"{_STRUCT_FORMATS[f.type]}\", payload, {f.offset})[0]"
+        )
+    lines.append("")
+    for f in spec.fields:
+        expr = f"{f.name}_raw"
+        if f.scale != 1.0:
+            expr += f" * {f.scale!r}"
+        if f.bias:
+            expr += f" + {f.bias!r}"
+        lines.append(f"    {f.name} = {expr}")
+    lines.append("")
+    lines.append("    measurements = [")
+    for m in spec.canonical.measurements:
+        unit_repr = f'"{m.unit}"' if m.unit else "None"
+        lines.append(f'        Measurement(name="{m.name}", value={m.field}, unit={unit_repr}),')
+    lines.append("    ]")
+    lines.append("")
+    lines.append("    raw = {")
+    for f in spec.fields:
+        lines.append(f'        "{f.name}": {f.name}_raw,')
+    lines.append("    }")
+    lines.append("")
+    lines.append("    return CanonicalReading(")
+    lines.append("        device_id=device_id,")
+    lines.append("        protocol=PROTOCOL,")
+    lines.append("        message_type=MESSAGE_TYPE,")
+    lines.append("        timestamp=timestamp,")
+    lines.append("        measurements=measurements,")
+    lines.append("        location=None,")
+    lines.append("        raw=raw,")
+    lines.append("    )")
+    lines.append("")
+    return "\n".join(lines)

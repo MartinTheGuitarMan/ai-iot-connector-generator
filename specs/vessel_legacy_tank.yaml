@@ -1,0 +1,48 @@
+protocol: vessel_legacy
+transport: framed_binary
+framing:
+  sync: 7ec3
+  length_offset: 2
+  length_overhead: 7
+  type_offset: 3
+  payload_offset: 5
+  seq_offset: 4
+  crc:
+    poly: 32773
+    init: 65535
+    reflected: true
+    xorout: 0
+    start: 2
+    endian: little
+message:
+  id: tank
+  description: Inferred from a capture (791 frames, type 0x21)
+  type_value: 33
+  payload_length: 4
+fields:
+- name: tank_id
+  type: uint8
+  offset: 0
+  scale: 1.0
+  unit: none
+- name: level_pm
+  type: uint16_le
+  offset: 1
+  scale: 1.0
+  unit: permille
+- name: temp_c
+  type: int8
+  offset: 3
+  scale: 1.0
+  unit: celsius
+canonical:
+  measurements:
+  - name: tank_id
+    field: tank_id
+    unit: none
+  - name: level_pm
+    field: level_pm
+    unit: permille
+  - name: temp_c
+    field: temp_c
+    unit: celsius

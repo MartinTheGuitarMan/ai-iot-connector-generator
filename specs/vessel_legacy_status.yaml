@@ -1,0 +1,40 @@
+protocol: vessel_legacy
+transport: framed_binary
+framing:
+  sync: 7ec3
+  length_offset: 2
+  length_overhead: 7
+  type_offset: 3
+  payload_offset: 5
+  seq_offset: 4
+  crc:
+    poly: 32773
+    init: 65535
+    reflected: true
+    xorout: 0
+    start: 2
+    endian: little
+message:
+  id: status
+  description: Inferred from a capture (791 frames, type 0x30)
+  type_value: 48
+  payload_length: 3
+fields:
+- name: flags
+  type: uint8
+  offset: 0
+  scale: 1.0
+  unit: none
+- name: hours
+  type: uint16_be
+  offset: 1
+  scale: 0.1
+  unit: hours
+canonical:
+  measurements:
+  - name: flags
+    field: flags
+    unit: none
+  - name: hours
+    field: hours
+    unit: hours

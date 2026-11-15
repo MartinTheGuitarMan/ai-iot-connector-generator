@@ -35,7 +35,7 @@ docker-compose.yml      local InfluxDB + Grafana + Node-RED stack
 tests/                  generator, connector, pipeline, and sample-data tests
 ```
 
-Two transports are implemented. Neither is tied to any one protocol
+Three transports are implemented. None is tied to any one protocol
 standard or vendor — they're general field-addressing strategies that
 cover most real device wire formats:
 
@@ -60,6 +60,14 @@ cover most real device wire formats:
   registers instead of ASCII sentences (rainfall, wind gust, battery
   voltage, UV index) — the same real-world fragmentation story, a second
   wire format for the same category of device.
+
+- **framed_binary** — a byte stream of self-delimiting frames (sync bytes,
+  length field, message-type byte, payload, CRC16 trailer), fields addressed by
+  byte offset (`uint8`/`int16_le`/`uint32_be`/..., `scale`, `bias`). The shape of
+  many legacy serial/RS-485 device protocols. Generated modules expose
+  `iter_frames(stream)` (resyncs on the sync bytes, drops corrupt frames and line
+  noise) and `parse(frame, device_id, timestamp)`; the wire has no clock, so the
+  caller supplies the timestamp. See "Reverse: capture → spec" below.
 
 Every generated connector's `parse(...)` returns a `canonical.CanonicalReading`
 (device_id, protocol, message_type, ISO 8601 timestamp, location, a list of
@@ -192,6 +200,44 @@ Once it's up on your machine, the honest verification loop is: confirm
 `docker compose ps` shows all three healthy, run the pipeline, open
 Grafana and see the panels populate, and try the `curl` above against
 Node-RED and confirm the point shows up in Grafana too.
+
+## Reverse: capture → spec (framed_binary)
+
+Stage 2 below starts from *documentation*. This is the other starting point: no
+documentation at all, just a captured byte stream and a few readings a human noted
+off the device's own display.
+
+```
+reverse/infer.py            stage 1: sync, length field, type/seq bytes, CRC16 variant
+                            (swept), message types, payload sizes - from the bytes alone
+                            stage 2: fit every (offset, width, endianness, signedness)
+                            candidate to the anchors: value = raw * scale + bias
+reverse/cli.py              python -m reverse.cli infer --capture ... --anchors ... --out-dir specs/
+scripts/gen_legacy_demo.py  simulates an unknown device with a HIDDEN protocol and writes
+                            capture.bin + anchors.yaml + truth.csv
+tests/test_framed_binary.py end-to-end: infer from capture+anchors only, generate connectors,
+                            score every decoded value against truth.csv
+```
+
+Inferred specs go through the same `ProtocolSpec` loader and codegen as hand-written
+ones (`specs/vessel_legacy_*.yaml` → `connectors/vessel_legacy_*.py` are checked-in
+output of the demo). Anchors look like
+`{message: engine, field: rpm, unit: rpm, ordinal: 120, value: 1480}`, where `ordinal`
+is the frame's (unwrapped) sequence counter.
+
+What this does and doesn't show:
+
+- The inference never sees the device's spec; the truth is only used to score. That
+  avoids the circularity noted above ("generated from the connectors' own assumptions").
+- Ambiguity is resolved by the data, not guessed: sub-zero anchors force `int8`,
+  anchors spanning a low-byte rollover fix a counter's byte order. If the anchors can't
+  tell two encodings apart, the report says how many lower-ranked fits remain, and
+  ties go to the roundest scale. Choose anchors that span the range.
+- The simulated device is easy mode: no encryption, no bit-packed fields, no
+  multi-frame messages, 2-byte sync, a CRC from a small catalogue of CRC16 variants.
+  Unanchored payload bytes are reported as unmapped, not guessed.
+- Deterministic heuristics only, no LLM yet. Real captures from real hardware are the
+  actual test, and haven't been run through this.
 
 ## Stage 2 (planned, not yet built): LLM-assisted spec/connector authoring
 
